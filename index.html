@@ -8,7 +8,7 @@
 :root{--bg:#f1f3f4;--card:#fff;--ink:#202124;--muted:#5f6368;--blue:#4285f4;--blue-d:#2f6fd6;--line:#dadce0;--red:#c5221f;--green:#188038}
 *{box-sizing:border-box}
 body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
-main{max-width:620px;margin:0 auto;padding:24px 16px 64px}
+main{max-width:820px;margin:0 auto;padding:24px 16px 64px}
 header.top{text-align:center;margin:24px 0}
 header.top h1{margin:0;font-size:2.2rem}
 header.top p{margin:6px 0 0;color:var(--muted)}
@@ -40,6 +40,31 @@ input{font:inherit;padding:10px;border:1px solid var(--line);border-radius:6px;w
 .bar h2{margin:0;font-size:1.4rem}
 .banner{display:flex;gap:12px;align-items:center;justify-content:space-between;background:#e8f0fe;border:1px solid #aecbfa;color:#174ea6;border-radius:10px;padding:12px 16px;margin-bottom:16px}
 .banner.err{background:#fce8e6;border-color:#f5b5b1;color:var(--red)}
+button.danger:hover{background:#a50e0e}
+button:disabled{background:#bdc1c6;cursor:not-allowed}
+.tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.tablewrap{overflow:hidden;background:var(--card);border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);font-size:.93rem;white-space:nowrap}
+th{color:var(--muted)}
+.qr svg{width:56px;height:56px;display:block;background:#fff}
+.search{margin-bottom:12px}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:16px;z-index:10}
+.dialog{position:relative;background:#fff;border-radius:12px;padding:24px;max-width:420px;width:100%;display:grid;gap:12px}
+.dialog h3{margin:0 28px 0 0}.dialog p{margin:0}
+.x{position:absolute;top:8px;right:8px;background:transparent;color:var(--muted);font-size:1.4rem;padding:2px 10px}
+.x:hover{background:#eee}
+.ell{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.ell.s{max-width:150px}
+#tip{position:fixed;display:none;z-index:20;background:#202124;color:#fff;padding:6px 10px;border-radius:6px;max-width:min(420px,90vw);font-size:.9rem;pointer-events:none}
+.pager{display:flex;gap:12px;align-items:center;justify-content:center;margin:12px 0;color:var(--muted)}
+#reader{width:100%;max-width:420px;margin:0 auto}
+.bookbox{display:flex;gap:16px;align-items:flex-start;margin-bottom:12px}
+.bookbox img{max-height:130px;border-radius:4px}
+.bookbox p{margin:2px 0}
+@media(max-width:640px){.hm{display:none}th,td{padding:10px 6px}th{font-size:.8rem}}
+.isbnform{margin-top:12px}
+.late{color:var(--red);font-weight:600}
 #msg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#202124;color:#fff;padding:10px 18px;border-radius:8px;display:none;max-width:90vw}
 #msg.err{background:var(--red)}
 </style>
@@ -75,6 +100,10 @@ input{font:inherit;padding:10px;border:1px solid var(--line);border-radius:6px;w
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-auth-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-firestore-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 <script>
 const SUPER_EMAIL = "j.borrego@irakasle.eus";
 firebase.initializeApp({
@@ -127,14 +156,14 @@ function renderLogin(){
 
 // ---------- Lista de centros ----------
 async function renderChooser(){
-  cur = null; localStorage.removeItem("school_" + me.uid);
+  cur = null; stopScanner(); localStorage.removeItem("school_" + me.uid);
   const fl = flashHtml();
   $app.innerHTML = fl + loading("Cargando tus centros…");
   let rows = [], owned = [], pending = [], alerts = [];
   try{
     if(isSuper){
       const all = (await db.collection("schools").where("status", "==", "approved").get()).docs;
-      rows = all.map(d => ({ sid: d.id, schoolName: d.data().name, role: "admin", status: "active" }));
+      rows = all.map(d => ({ sid: d.id, schoolName: d.data().name, centerCode: d.data().centerCode || "", role: "admin", status: "active" }));
       pending = (await db.collection("schools").where("status", "==", "pending").get()).docs;
       if(!synced){ // mantiene al día el directorio público de centros aprobados
         synced = true; const b = db.batch();
@@ -148,13 +177,14 @@ async function renderChooser(){
         if(n) alerts.push({ sid: r.sid, name: r.schoolName, n });
       }
     }
-    owned = (await db.collection("schools").where("ownerUid", "==", me.uid).get()).docs.filter(d => d.data().status !== "approved");
+    owned = (await db.collection("schools").where("ownerUid", "==", me.uid).get()).docs.filter(d => !["approved", "deleted"].includes(d.data().status));
   }catch(e){ fail(e); }
+  window.rowsCache = rows;
   const st = { active: ["", "Activo"], pending: ["wait", "Pendiente de aprobación"], rejected: ["off", "Rechazado"] };
   const alertHtml = alerts.map(a => `<div class="banner"><span>Hay ${a.n} solicitud${a.n > 1 ? "es" : ""} nueva${a.n > 1 ? "s" : ""} para unirse a «${esc(a.name)}».</span><button class="small" onclick="enterSchool('${a.sid}','members')">Ver</button></div>`).join("");
   const rowHtml = rows.map(r => { const t = st[r.status] || st.pending;
     return `<div class="row"><div class="info"><strong>${esc(r.schoolName)}</strong><small>${r.role === "admin" ? "Administrador" : "Usuario"} · <span class="tag ${t[0]}">${t[1]}</span></small></div>
-    ${r.status === "active" ? `<button class="small" onclick="enterSchool('${r.sid}')">Entrar</button>` : ""}</div>`; }).join("");
+    <div class="acts">${r.status === "active" ? `<button class="small" onclick="enterSchool('${r.sid}')">Entrar</button>` : ""}${isSuper ? `<button class="small" aria-label="Editar centro" onclick="editSchool('${r.sid}')">${PENCIL}</button><button class="small danger" aria-label="Eliminar centro" onclick="askDelete('${r.sid}')">🗑</button>` : ""}</div></div>`; }).join("");
   const ownHtml = owned.map(d => { const s = d.data(), rej = s.status === "rejected";
     return `<div class="row"><div class="info"><strong>${esc(s.name)}</strong><small>Registro de centro · <span class="tag ${rej ? "off" : "wait"}">${rej ? "Rechazado" : "Pendiente de aprobación"}</span></small></div></div>`; }).join("");
   const pendHtml = pending.map(d => { const s = d.data();
@@ -236,11 +266,12 @@ async function renderDashboard(){
   const fl = flashHtml();
   let n = 0;
   try{ if(cur.admin) n = (await db.collection(`schools/${cur.sid}/members`).where("status", "==", "pending").get()).size; }catch(e){ fail(e); }
+  bookQ = ""; bookPage = 0; stuQ = ""; stuPage = 0; histQ = ""; histPage = 0; outQ = ""; outPage = 0; stopScanner();
   window.soon = () => toast("Esta sección se activa en la siguiente fase");
   $app.innerHTML = fl + (n ? `<div class="banner"><span>Hay ${n} nueva${n > 1 ? "s" : ""} solicitud${n > 1 ? "es" : ""} para unirse a tu centro.</span><button class="small" onclick="renderMembers()">Ver</button></div>` : "") +
     `<div class="sname">🏫 ${esc(cur.name)} <span class="tag">${cur.admin ? "Administrador" : "Usuario"}</span></div>
     <div style="text-align:center"><button class="ghost" onclick="renderChooser()">Cambiar escuela</button></div>
-    <nav class="menu"><button onclick="soon()">Libros</button><button onclick="soon()">Alumnado</button><button onclick="soon()">Préstamos</button><button onclick="soon()">Historial</button><button onclick="renderMembers()">Miembros</button></nav>`;
+    <nav class="menu"><button onclick="renderBooks()">Libros</button><button onclick="renderStudents()">Alumnado</button><button onclick="renderLoans()">Préstamos/Devoluciones</button><button onclick="renderHistory()">Historial</button><button onclick="renderMembers()">Miembros</button></nav>`;
 }
 
 // ---------- Miembros ----------
@@ -267,6 +298,521 @@ async function setMember(uid, data){
 async function removeMember(uid){
   if(!confirm("¿Seguro que quieres quitar a esta persona del centro?")) return;
   try{ await memberRef(cur.sid, uid).delete(); toast("Persona eliminada"); renderMembers(); }catch(e){ fail(e); }
+}
+
+// ---------- Eliminar centro (solo superadmin) ----------
+function askDelete(sid){
+  if(!isSuper) return;
+  const name = (window.rowsCache.find(r => r.sid === sid) || {}).schoolName || "";
+  const o = document.createElement("div"); o.className = "overlay";
+  o.innerHTML = `<div class="dialog" role="dialog" aria-modal="true"><button class="x" aria-label="Cerrar">×</button><h3>Eliminar «${esc(name)}»</h3>
+    <p>Si quieres eliminar el centro, escribe ELIMINAR en la siguiente casilla para borrarlo.</p>
+    <input autocomplete="off" aria-label="Escribe ELIMINAR"><button class="danger" disabled>Eliminar (5)</button></div>`;
+  document.body.appendChild(o);
+  const inp = o.querySelector("input"), go = o.querySelector(".danger"); let left = 5;
+  const upd = () => { go.disabled = !(left <= 0 && inp.value === "ELIMINAR"); go.textContent = left > 0 ? `Eliminar (${left})` : "Eliminar"; };
+  const t = setInterval(() => { left--; if(left <= 0) clearInterval(t); upd(); }, 1000);
+  const close = () => { clearInterval(t); document.removeEventListener("keydown", onKey); o.remove(); };
+  const onKey = e => { if(e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  o.querySelector(".x").onclick = close; inp.oninput = upd; inp.focus();
+  go.onclick = async () => { go.disabled = true; await deleteSchool(sid); close(); };
+}
+async function deleteSchool(sid){
+  try{ // borrado "suave": se conservan libros, alumnos y préstamos para poder recuperarlos
+    const mem = await db.collection(`schools/${sid}/members`).get(), b = db.batch();
+    mem.forEach(d => b.delete(d.ref));
+    b.delete(db.doc("directory/" + sid));
+    b.update(db.doc("schools/" + sid), { status: "deleted", deletedAt: FV.serverTimestamp() });
+    await b.commit(); toast("Centro eliminado"); renderChooser();
+  }catch(e){ fail(e); }
+}
+
+// ---------- Utilidades ----------
+const backBar = t => `<div class="bar"><button class="ghost" onclick="renderDashboard()">← Volver</button><h2>${t}</h2></div>`;
+
+// ---------- Utilidades de listas ----------
+const BOOKS_PER_PAGE = 20, STUDENTS_PER_PAGE = 30;
+const PENCIL = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+const PAGER = (fn, page, pages) => pages > 1 ? `<div class="pager"><button class="small" ${page <= 0 ? "disabled" : ""} onclick="${fn}(${page - 1})" aria-label="Página anterior">‹</button><span>Página ${page + 1} de ${pages}</span><button class="small" ${page >= pages - 1 ? "disabled" : ""} onclick="${fn}(${page + 1})" aria-label="Página siguiente">›</button></div>` : "";
+function modal(inner){
+  const o = document.createElement("div"); o.className = "overlay";
+  o.innerHTML = `<div class="dialog" role="dialog" aria-modal="true"><button class="x" type="button" aria-label="Cerrar">×</button>${inner}</div>`;
+  document.body.appendChild(o);
+  const close = () => { document.removeEventListener("keydown", onKey); o.remove(); };
+  const onKey = e => { if(e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  o.querySelector(".x").onclick = close;
+  return { o, close };
+}
+
+// Texto completo: ratón 1 s encima, clic, o mantener pulsado en táctil
+(() => {
+  const tip = document.createElement("div"); tip.id = "tip"; document.body.appendChild(tip);
+  let timer = null, pinTimer = null, pinned = false, suppressUntil = 0;
+  const hide = () => { clearTimeout(timer); clearTimeout(pinTimer); pinned = false; tip.style.display = "none"; };
+  const cellOf = e => e.target.closest && e.target.closest(".ell");
+  const show = (el, touch) => {
+    if(el.scrollWidth <= el.clientWidth) return false;   // solo si el texto está recortado
+    tip.textContent = el.textContent; tip.style.display = "block";
+    const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + "px";
+    tip.style.top = Math.max(8, touch ? r.top - h - 8 : r.bottom + 6) + "px";
+    return true;
+  };
+  const arm = (e, ms) => { hide(); const el = cellOf(e); if(el) timer = setTimeout(() => show(el, e.pointerType === "touch"), ms); };
+  document.addEventListener("pointerover", e => { if(e.pointerType === "mouse" && !pinned) arm(e, 1000); });
+  document.addEventListener("pointermove", e => { if(e.pointerType === "mouse" && !pinned) arm(e, 1000); });
+  document.addEventListener("pointerout", e => { if(cellOf(e)) hide(); });
+  document.addEventListener("pointerdown", e => { if(e.pointerType === "touch") arm(e, 600); });
+  ["pointerup", "pointercancel"].forEach(t => document.addEventListener(t, e => {
+    if(e.pointerType === "touch" && tip.style.display === "block" && !pinned) suppressUntil = Date.now() + 600;  // evita que el clic posterior a una pulsación larga lo reabra
+    hide();
+  }));
+  document.addEventListener("click", e => {
+    const el = cellOf(e);
+    if(!el){ hide(); return; }
+    if(Date.now() < suppressUntil) return;
+    hide();
+    if(show(el, e.pointerType === "touch")){ pinned = true; pinTimer = setTimeout(hide, 3500); }
+  });
+  document.addEventListener("contextmenu", e => { if(cellOf(e)) e.preventDefault(); });
+  document.addEventListener("scroll", hide, true);
+})();
+
+// ---------- Libros ----------
+let booksCache = [], bookQ = "", bookPage = 0;
+async function renderBooks(){
+  stopScanner();
+  const fl = flashHtml();
+  $app.innerHTML = fl + loading("Cargando libros…");
+  try{ booksCache = (await db.collection(`schools/${cur.sid}/books`).get()).docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.title || "").localeCompare(b.title || "")); }catch(e){ fail(e); }
+  $app.innerHTML = fl + backBar("Libros") +
+    (cur.admin ? `<div class="tools"><button onclick="renderAddBook()">Incorporar libro</button><button onclick="exportBooks()">Exportar biblioteca a Excel</button></div>` : "") +
+    `<input class="search" placeholder="Buscar por título, autor o ISBN" value="${esc(bookQ)}" oninput="bookQ=this.value;bookPage=0;drawBooks()"><div id="tbl"></div>`;
+  drawBooks();
+}
+function drawBooks(){
+  const q = bookQ.toLowerCase(), list = booksCache.filter(b => `${b.title} ${b.author} ${b.isbn || b.id}`.toLowerCase().includes(q));
+  const pages = Math.max(1, Math.ceil(list.length / BOOKS_PER_PAGE)); bookPage = Math.min(bookPage, pages - 1);
+  const rows = list.slice(bookPage * BOOKS_PER_PAGE, (bookPage + 1) * BOOKS_PER_PAGE), pg = PAGER("setBookPage", bookPage, pages);
+  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr><th style="width:26%">Título</th><th style="width:18%">Autor</th><th class="hm" style="width:16%">Editorial</th><th class="hm" style="width:14%">ISBN</th><th style="width:92px">Disponibles</th>${cur.admin ? '<th style="width:88px"></th>' : ""}</tr></thead><tbody>` +
+    rows.map(b => `<tr><td><div class="ell">${esc(b.title)}</div></td><td><div class="ell">${esc(b.author)}</div></td><td class="hm"><div class="ell">${esc(b.publisher)}</div></td><td class="hm"><div class="ell">${esc(b.isbn || b.id)}</div></td>
+      <td><span class="tag ${b.availableCopies > 0 ? "" : "off"}">${b.availableCopies ?? 0} / ${b.totalCopies ?? 0}</span></td>
+      ${cur.admin ? `<td><div class="acts" style="flex-wrap:nowrap"><button class="small" aria-label="Editar libro" onclick="editBook('${esc(b.id)}')">${PENCIL}</button><button class="small danger" aria-label="Eliminar libro" onclick="deleteBook('${esc(b.id)}')">🗑</button></div></td>` : ""}</tr>`).join("") +
+    `</tbody></table>${rows.length ? "" : `<div class="empty" style="padding:16px">${booksCache.length ? "Ningún libro coincide con la búsqueda." : "Todavía no hay libros."}</div>`}</div>` + pg;
+}
+function setBookPage(p){ bookPage = p; drawBooks(); document.getElementById("tbl").scrollIntoView({ block: "start" }); }
+
+function editBook(id){
+  const b = booksCache.find(x => x.id === id);
+  if(!cur.admin || !b) return;
+  const used = b.activeLoans || 0, { o, close } = modal(`<h3>Editar libro</h3><form><label>ISBN<input value="${esc(b.isbn || b.id)}" disabled></label>
+    <label>Título<input name="title" required value="${esc(b.title)}"></label><label>Autor<input name="author" required value="${esc(b.author)}"></label>
+    <label>Editorial<input name="publisher" value="${esc(b.publisher)}"></label>
+    <label>Ejemplares totales<input name="total" type="number" min="${Math.max(1, used)}" required value="${b.totalCopies ?? 1}"></label><button>Guardar cambios</button></form>`);
+  o.querySelector("form").onsubmit = async e => {
+    e.preventDefault(); const f = e.target, t = parseInt(f.total.value, 10);
+    try{
+      await db.doc(`schools/${cur.sid}/books/${id}`).update({ title: f.title.value.trim(), author: f.author.value.trim(), publisher: f.publisher.value.trim(), totalCopies: t, availableCopies: t - used, available: t - used > 0 });
+      close(); note("Libro actualizado."); renderBooks();
+    }catch(err){ fail(err); }
+  };
+}
+async function deleteBook(id){
+  const b = booksCache.find(x => x.id === id);
+  if(b && b.activeLoans > 0) return toast("No se puede eliminar: tiene préstamos activos", true);
+  if(!confirm(`¿Eliminar «${b ? b.title : id}» de la biblioteca?`)) return;
+  try{ await db.doc(`schools/${cur.sid}/books/${id}`).delete(); note("Libro eliminado."); renderBooks(); }catch(e){ fail(e); }
+}
+function exportBooks(){
+  const rows = booksCache.map(b => ({ ISBN: b.isbn || b.id, "Título": b.title, Autor: b.author, Editorial: b.publisher, "Ejemplares totales": b.totalCopies, "Disponibles": b.availableCopies, "Prestados": b.activeLoans || 0 }));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Biblioteca");
+  XLSX.writeFile(wb, `biblioteca-${cur.name}.xlsx`);
+}
+
+// ---------- Incorporar libro: escáner o manual ----------
+let scanToken = 0, camStream = null, zxReader = null, scanDone = false, scanned = null;
+function stopScanner(){
+  scanToken++;
+  if(zxReader){ try{ zxReader.reset(); }catch(e){} zxReader = null; }
+  if(camStream){ camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+}
+const addBar = t => `<div class="bar"><button class="ghost" onclick="renderAddBook()">← Volver</button><h2>${t}</h2></div>`;
+function renderAddBook(){
+  stopScanner();
+  $app.innerHTML = `<div class="bar"><button class="ghost" onclick="renderBooks()">← Volver a libros</button><h2>Incorporar libro</h2></div>
+    <nav class="menu"><button onclick="renderScan()">Añadir con escáner</button><button onclick="renderManual()">Añadir manualmente</button></nav>`;
+}
+function renderManual(isbn = ""){
+  stopScanner();
+  $app.innerHTML = addBar("Añadir manualmente") + `<div class="panel"><form onsubmit="addBook(event)"><label>ISBN<input name="isbn" required value="${esc(isbn)}"></label>
+    <label>Título<input name="title" required></label><label>Autor<input name="author" required></label><label>Editorial<input name="publisher"></label>
+    <label>Ejemplares<input name="copies" type="number" min="1" value="1" required></label><button>Guardar libro</button></form></div>`;
+}
+async function addBook(e){
+  e.preventDefault();
+  const f = e.target, isbn = f.isbn.value.replace(/[\s-]/g, ""), n = parseInt(f.copies.value, 10);
+  try{
+    const ref = db.doc(`schools/${cur.sid}/books/${isbn}`);
+    if((await ref.get()).exists) return toast("Ya existe un libro con ese ISBN", true);
+    await ref.set({ isbn, title: f.title.value.trim(), author: f.author.value.trim(), publisher: f.publisher.value.trim(), totalCopies: n, availableCopies: n, activeLoans: 0, available: true, createdAt: FV.serverTimestamp() });
+    note("Libro incorporado a la biblioteca."); renderBooks();
+  }catch(err){ fail(err); }
+}
+function toIsbn13(x){ // acepta ISBN-10 o ISBN-13 y devuelve siempre ISBN-13
+  x = x.replace(/[^\dXx]/g, "").toUpperCase();
+  if(x.length === 10){ const b = "978" + x.slice(0, 9); return b + (10 - [...b].reduce((a, c, i) => a + +c * (i % 2 ? 3 : 1), 0) % 10) % 10; }
+  return x;
+}
+function renderScan(){
+  stopScanner(); scanDone = false;
+  $app.innerHTML = addBar("Añadir con escáner") + `<div class="panel"><p style="margin-top:0">Apunta al código de barras del libro (el del ISBN, que empieza por 978 o 979). Sujétalo a unos 20-30 cm, con buena luz y sin reflejos.</p>
+    <video id="cam" playsinline muted autoplay style="width:100%;max-width:480px;border-radius:8px;background:#000;display:block;margin:0 auto"></video>
+    <p class="empty" id="scanStatus">Abriendo cámara…</p>
+    <form class="isbnform" onsubmit="event.preventDefault();onIsbn(this.isbn.value)"><label>¿No lo detecta? Escribe el ISBN<input name="isbn" inputmode="numeric" required></label><button>Buscar libro</button></form></div>`;
+  startScan("isbn", onIsbn);
+}
+async function startScan(kind, cb){
+  const token = ++scanToken, video = document.getElementById("cam"), status = document.getElementById("scanStatus");
+  const say = t => { if(token === scanToken && status) status.textContent = t; };
+  const qr = kind === "qr", fmt = qr ? "qr_code" : "ean_13";
+  try{
+    let native = false;   // lector nativo del navegador (Chrome en Android, Mac…): el más fiable
+    if("BarcodeDetector" in window){ try{ native = (await BarcodeDetector.getSupportedFormats()).includes(fmt); }catch(e){} }
+    if(native){
+      const det = new BarcodeDetector({ formats: [fmt] });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } });
+      if(token !== scanToken){ stream.getTracks().forEach(t => t.stop()); return; }
+      camStream = stream; video.srcObject = stream; await video.play(); say(qr ? "Buscando código QR…" : "Buscando código de barras…");
+      const loop = async () => {
+        if(token !== scanToken) return;
+        try{ const r = await det.detect(video); if(r.length) cb(r[0].rawValue); }catch(e){}
+        if(token === scanToken) setTimeout(loop, qr ? 400 : 120);
+      };
+      loop();
+    }else{   // respaldo: lector ZXing (p. ej. Chrome/Edge en Windows, Firefox)
+      if(typeof ZXing === "undefined") throw new Error("No se cargó la librería de lectura");
+      const hints = new Map([[ZXing.DecodeHintType.POSSIBLE_FORMATS, [qr ? ZXing.BarcodeFormat.QR_CODE : ZXing.BarcodeFormat.EAN_13]], [ZXing.DecodeHintType.TRY_HARDER, true]]);
+      const reader = new ZXing.BrowserMultiFormatReader(hints, 200); zxReader = reader;
+      await reader.decodeFromConstraints({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } }, video, res => { if(res && token === scanToken) cb(res.getText()); });
+      say(qr ? "Buscando código QR…" : "Buscando código de barras…");
+    }
+  }catch(e){ console.error(e); say("No se pudo abrir la cámara. Revisa los permisos del navegador o escribe el código abajo."); }
+}
+async function lookupIsbn(isbn){ // consulta varias fuentes y rellena lo que falte con la otra
+  const fromGoogle = fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`).then(r => r.json()).then(j => {
+    const v = j.items && j.items[0] && j.items[0].volumeInfo;
+    return v && { title: [v.title, v.subtitle].filter(Boolean).join(": "), author: (v.authors || []).join(", "), publisher: v.publisher || "", cover: ((v.imageLinks && v.imageLinks.thumbnail) || "").replace("http:", "https:") };
+  }).catch(() => null);
+  const fromOpenLibrary = fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`).then(r => r.json()).then(j => {
+    const v = j["ISBN:" + isbn];
+    return v && { title: [v.title, v.subtitle].filter(Boolean).join(": "), author: (v.authors || []).map(a => a.name).join(", "), publisher: (v.publishers || []).map(x => x.name).join(", "), cover: (v.cover && v.cover.medium) || "" };
+  }).catch(() => null);
+  const src = await Promise.all([fromGoogle, fromOpenLibrary]), m = {};
+  for(const k of ["title", "author", "publisher", "cover"]) m[k] = (src.find(x => x && x[k]) || {})[k] || "";
+  return m.title ? m : null;
+}
+async function onIsbn(code){
+  if(scanDone) return;
+  const isbn = toIsbn13(code);
+  if(!/^\d{13}$/.test(isbn)) return toast("ISBN no válido", true);
+  scanDone = true; stopScanner();
+  $app.innerHTML = addBar("Añadir con escáner") + loading("Buscando datos del libro…");
+  const info = await lookupIsbn(isbn);
+  let exists = false, total = 0;
+  try{ const d = await db.doc(`schools/${cur.sid}/books/${isbn}`).get(); exists = d.exists; total = exists ? d.data().totalCopies : 0; }catch(e){ fail(e); }
+  scanned = { isbn, info, exists };
+  if(!info){
+    $app.innerHTML = addBar("Añadir con escáner") + `<div class="panel"><p style="margin-top:0">No he encontrado datos para el ISBN <strong>${esc(isbn)}</strong>.</p>
+      <div class="tools"><button onclick="renderManual('${isbn}')">Rellenar manualmente</button><button class="ghost" onclick="renderScan()">Escanear otro</button></div></div>`;
+    return;
+  }
+  $app.innerHTML = addBar("Añadir con escáner") + `<div class="panel"><h3>¿Es este el libro que quieres añadir?</h3>
+    <div class="bookbox">${info.cover ? `<img src="${esc(info.cover)}" alt="Portada">` : ""}<div><p><strong>${esc(info.title)}</strong></p><p>${esc(info.author) || "Autor desconocido"}</p><p>${esc(info.publisher)}</p><p>ISBN ${esc(isbn)}</p></div></div>
+    ${exists ? `<p class="empty">Este libro ya está en tu biblioteca (${total} ejemplar${total === 1 ? "" : "es"}). Si aceptas, se sumarán los ejemplares indicados.</p>` : ""}
+    <form onsubmit="saveScanned(event)"><label>Ejemplares a añadir<input name="copies" type="number" min="1" value="1" required></label>
+    <div class="tools"><button>Sí, añadir</button><button type="button" class="ghost" onclick="renderScan()">No, escanear otro</button></div></form></div>`;
+}
+async function saveScanned(e){
+  e.preventDefault();
+  const { isbn, info, exists } = scanned, n = parseInt(e.target.copies.value, 10), ref = db.doc(`schools/${cur.sid}/books/${isbn}`);
+  try{
+    if(exists) await ref.update({ totalCopies: FV.increment(n), availableCopies: FV.increment(n), available: true });
+    else await ref.set({ isbn, title: info.title, author: info.author, publisher: info.publisher, totalCopies: n, availableCopies: n, activeLoans: 0, available: true, createdAt: FV.serverTimestamp() });
+    note(exists ? "Ejemplares añadidos al libro existente." : "Libro incorporado a la biblioteca."); renderBooks();
+  }catch(err){ fail(err); }
+}
+
+// ---------- Alumnado ----------
+let stuCache = [];
+const activeStudents = () => stuCache.filter(s => !s.deleted).sort((a, b) => a.id.localeCompare(b.id));
+const qrSvg = code => { const q = qrcode(0, "M"); q.addData(code); q.make(); return q.createSvgTag(3, 2); };
+let stuQ = "", stuPage = 0;
+async function renderStudents(){
+  const fl = flashHtml();
+  $app.innerHTML = fl + loading("Cargando alumnado…");
+  try{ stuCache = (await db.collection(`schools/${cur.sid}/students`).get()).docs.map(d => ({ id: d.id, ...d.data() })); }catch(e){ fail(e); }
+  $app.innerHTML = fl + backBar("Alumnado") +
+    (cur.admin ? `<div class="tools"><button onclick="createStudents()">Crear alumnos</button><button onclick="renderDeleted()">Recuperar alumnos</button><button onclick="printCards()">Imprimir</button></div>` : "") +
+    `<input class="search" placeholder="Buscar código" value="${esc(stuQ)}" oninput="stuQ=this.value;stuPage=0;drawStudents()"><div id="tbl"></div>`;
+  drawStudents();
+}
+function drawStudents(){
+  const q = stuQ.toLowerCase(), list = activeStudents().filter(s => s.id.toLowerCase().includes(q));
+  const pages = Math.max(1, Math.ceil(list.length / STUDENTS_PER_PAGE)); stuPage = Math.min(stuPage, pages - 1);
+  const rows = list.slice(stuPage * STUDENTS_PER_PAGE, (stuPage + 1) * STUDENTS_PER_PAGE), pg = PAGER("setStuPage", stuPage, pages);
+  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr><th style="width:90px">QR</th><th>Código</th>${cur.admin ? '<th style="width:70px"></th>' : ""}</tr></thead><tbody>` +
+    rows.map(s => `<tr><td class="qr">${qrSvg(s.id)}</td><td><strong>${esc(s.id)}</strong></td>${cur.admin ? `<td><button class="small danger" aria-label="Eliminar alumno" onclick="removeStudent('${esc(s.id)}')">🗑</button></td>` : ""}</tr>`).join("") +
+    `</tbody></table>${rows.length ? "" : '<div class="empty" style="padding:16px">Todavía no hay alumnos.</div>'}</div>` + pg;
+}
+function setStuPage(p){ stuPage = p; drawStudents(); document.getElementById("tbl").scrollIntoView({ block: "start" }); }
+async function createStudents(){
+  const n = parseInt(prompt("¿Cuántos alumnos quieres crear?", "1"), 10);
+  if(!(n > 0 && n <= 200)) return;
+  try{ // los códigos nunca se reutilizan: se cuentan también los alumnos eliminados
+    const max = stuCache.reduce((m, s) => Math.max(m, parseInt(s.id.replace(/\D/g, ""), 10) || 0), 0), b = db.batch();
+    for(let i = 1; i <= n; i++) b.set(db.doc(`schools/${cur.sid}/students/A${String(max + i).padStart(4, "0")}`), { active: true, deleted: false, createdAt: FV.serverTimestamp() });
+    await b.commit(); note(n > 1 ? `${n} alumnos creados.` : "Alumno creado."); renderStudents();
+  }catch(e){ fail(e); }
+}
+async function removeStudent(id){
+  if(!confirm(`¿Quitar a ${id} de la lista? Podrás recuperarlo después con «Recuperar alumnos».`)) return;
+  try{ await db.doc(`schools/${cur.sid}/students/${id}`).update({ deleted: true, active: false, deletedAt: FV.serverTimestamp() }); renderStudents(); }catch(e){ fail(e); }
+}
+// ---------- Alumnos eliminados: recuperar ----------
+let delPage = 0;
+function renderDeleted(){
+  if(!cur.admin) return;
+  const list = stuCache.filter(s => s.deleted).sort((a, b) => a.id.localeCompare(b.id));
+  const pages = Math.max(1, Math.ceil(list.length / STUDENTS_PER_PAGE)); delPage = Math.min(delPage, pages - 1);
+  const rows = list.slice(delPage * STUDENTS_PER_PAGE, (delPage + 1) * STUDENTS_PER_PAGE), pg = PAGER("setDelPage", delPage, pages);
+  const when = s => s.deletedAt && s.deletedAt.toDate ? s.deletedAt.toDate().toLocaleDateString("es-ES") : "—";
+  $app.innerHTML = `<div class="bar"><button class="ghost" onclick="renderStudents()">← Volver</button><h2>Alumnos eliminados</h2></div>` + pg +
+    `<div class="tablewrap"><table><thead><tr><th>Código</th><th>Eliminado el</th><th style="width:120px"></th></tr></thead><tbody>` +
+    rows.map(s => `<tr><td><strong>${esc(s.id)}</strong></td><td>${when(s)}</td><td><button class="small" onclick="restoreStudent('${esc(s.id)}')">Recuperar</button></td></tr>`).join("") +
+    `</tbody></table>${rows.length ? "" : '<div class="empty" style="padding:16px">No hay alumnos eliminados.</div>'}</div>` + pg;
+}
+function setDelPage(p){ delPage = p; renderDeleted(); window.scrollTo(0, 0); }
+async function restoreStudent(id){
+  try{
+    await db.doc(`schools/${cur.sid}/students/${id}`).update({ deleted: false, active: true });
+    const s = stuCache.find(x => x.id === id); if(s){ s.deleted = false; s.active = true; }
+    toast(`${id} recuperado`); renderDeleted();
+  }catch(e){ fail(e); }
+}
+
+// ---------- PDF de tarjetas: columna izquierda profesorado, derecha alumnado ----------
+function drawCard(pdf, id, label, x, y){
+  const W = 95, H = 55;
+  pdf.setDrawColor(150); pdf.setLineDashPattern([1.5, 1.5], 0); pdf.rect(x, y, W, H); pdf.setLineDashPattern([], 0);
+  pdf.setFontSize(7); pdf.setTextColor(100);
+  pdf.text(pdf.splitTextToSize(cur.name, 45)[0], x + 5, y + 6);
+  pdf.setFontSize(8); pdf.text(label, x + W - 5, y + 6, { align: "right" });
+  const q = qrcode(0, "M"); q.addData(id); q.make();
+  const n = q.getModuleCount(), cs = 30 / n; pdf.setFillColor(0);
+  for(let r = 0; r < n; r++) for(let c = 0; c < n; c++) if(q.isDark(r, c)) pdf.rect(x + 5 + c * cs, y + 13 + r * cs, cs + .03, cs + .03, "F");
+  pdf.setFontSize(10); pdf.setTextColor(0); pdf.text(id, x + 20, y + 49, { align: "center" });
+  ["Izena", "Abizena", "Gela"].forEach((t, j) => {
+    const ly = y + 22 + j * 11; pdf.setFontSize(9); pdf.text(t + ":", x + 42, ly);
+    pdf.setDrawColor(0); pdf.line(x + 60, ly + .5, x + W - 5, ly + .5);
+  });
+}
+function printCards(){
+  const list = activeStudents();
+  if(!list.length) return toast("No hay alumnos para imprimir", true);
+  const pdf = new window.jspdf.jsPDF({ unit: "mm", format: "a4" }), W = 95, X0 = 10, Y0 = 11, H = 55;
+  list.forEach((s, i) => {   // 5 alumnos por hoja: cada uno en una fila con dos copias
+    const k = i % 5; if(i && k === 0) pdf.addPage();
+    drawCard(pdf, s.id, "Irakaslea / Profesorado", X0, Y0 + k * H);
+    drawCard(pdf, s.id, "Ikaslea / Alumnado", X0 + W, Y0 + k * H);
+  });
+  pdf.save(`tarjetas-alumnado-${cur.name}.pdf`);
+}
+// ---------- Editar centro (solo superadmin) ----------
+function editSchool(sid){
+  if(!isSuper) return;
+  const r = window.rowsCache.find(x => x.sid === sid);
+  if(!r) return;
+  const { o, close } = modal(`<h3>Editar centro</h3><form><label>Nombre oficial del centro<input name="n" required value="${esc(r.schoolName)}"></label>
+    <label>Código de centro<input name="c" required value="${esc(r.centerCode)}"></label><button>Guardar cambios</button></form>`);
+  o.querySelector("form").onsubmit = async e => {
+    e.preventDefault();
+    const name = e.target.n.value.trim(), code = e.target.c.value.trim();
+    try{
+      const mem = await db.collection(`schools/${sid}/members`).get(), b = db.batch();
+      b.update(db.doc("schools/" + sid), { name, centerCode: code });
+      b.set(db.doc("directory/" + sid), { name, centerCode: code }, { merge: true });
+      mem.forEach(d => b.update(d.ref, { schoolName: name }));   // el nombre también se guarda en cada miembro
+      await b.commit(); close(); note("Centro actualizado."); renderChooser();
+    }catch(err){ fail(err); }
+  };
+}
+
+// ---------- Préstamos / devoluciones ----------
+const LOAN_DAYS = 15;   // plazo de devolución por defecto
+let loanMode = "lend", loanBook = null;
+function renderLoans(){
+  stopScanner();
+  const fl = flashHtml();
+  $app.innerHTML = fl + backBar("Préstamos/Devoluciones") + `<nav class="menu"><button onclick="startLoan('lend')">Prestar</button><button onclick="startLoan('return')">Devolver</button></nav>`;
+}
+function scanScreen(title, text, kind, cb, back, label){
+  stopScanner(); scanDone = false; window._cb = cb;
+  $app.innerHTML = `<div class="bar"><button class="ghost" onclick="${back}">← Volver</button><h2>${title}</h2></div><div class="panel"><p style="margin-top:0">${text}</p>
+    <video id="cam" playsinline muted autoplay style="width:100%;max-width:480px;border-radius:8px;background:#000;display:block;margin:0 auto"></video>
+    <p class="empty" id="scanStatus">Abriendo cámara…</p>
+    <form class="isbnform" onsubmit="event.preventDefault();window._cb(this.code.value)"><label>${label}<input name="code" required></label><button>Continuar</button></form></div>`;
+  startScan(kind, cb);
+}
+const loanHead = () => loanMode === "lend" ? "Prestar libro" : "Devolver libro";
+function startLoan(mode){ loanMode = mode; loanIsbnScreen(); }
+function loanIsbnScreen(){
+  scanScreen(loanHead(), "Escanea el ISBN del libro (el código de barras de la contraportada).", "isbn", onLoanIsbn, "renderLoans()", "¿No lo detecta? Escribe el ISBN");
+}
+function loanStudentScreen(){
+  scanScreen(loanHead(), "Escanea el QR del alumno.", "qr", onLoanStudent, "loanIsbnScreen()", "¿No lo detecta? Escribe el código del alumno");
+}
+async function onLoanIsbn(code){
+  if(scanDone) return;
+  const isbn = toIsbn13(code);
+  if(!/^\d{13}$/.test(isbn)) return toast("ISBN no válido", true);
+  scanDone = true; stopScanner();
+  const lend = loanMode === "lend", bar = `<div class="bar"><button class="ghost" onclick="loanIsbnScreen()">← Volver</button><h2>${loanHead()}</h2></div>`;
+  $app.innerHTML = bar + loading("Buscando el libro…");
+  let d;
+  try{ d = await db.doc(`schools/${cur.sid}/books/${isbn}`).get(); }catch(e){ fail(e); return loanIsbnScreen(); }
+  if(!d.exists){
+    $app.innerHTML = bar + `<div class="panel"><p style="margin-top:0">El libro con ISBN <strong>${esc(isbn)}</strong> no está en la biblioteca de este centro.</p>
+      <div class="tools">${cur.admin ? `<button onclick="scanDone=false;onIsbn('${isbn}')">Incorporarlo a la biblioteca</button>` : ""}<button class="ghost" onclick="loanIsbnScreen()">Escanear otro</button></div></div>`;
+    return;
+  }
+  loanBook = { id: d.id, ...d.data() };
+  if(lend && !(loanBook.availableCopies > 0)){
+    $app.innerHTML = bar + `<div class="panel"><p style="margin-top:0">No quedan ejemplares disponibles de «${esc(loanBook.title)}».</p><button onclick="loanIsbnScreen()">Escanear otro</button></div>`;
+    return;
+  }
+  $app.innerHTML = bar + `<div class="panel"><h3>${lend ? "¿Es este el libro que quieres prestar?" : "¿Es este el libro que quieres devolver?"}</h3>
+    <div class="bookbox"><div><p><strong>${esc(loanBook.title)}</strong></p><p>${esc(loanBook.author)}</p><p>${esc(loanBook.publisher)}</p><p>ISBN ${esc(isbn)}</p>
+    <p class="empty">Disponibles: ${loanBook.availableCopies ?? 0} / ${loanBook.totalCopies ?? 0}</p></div></div>
+    <div class="tools"><button onclick="loanStudentScreen()">Sí</button><button class="ghost" onclick="loanIsbnScreen()">No, escanear otro</button></div></div>`;
+}
+async function onLoanStudent(text){
+  if(scanDone) return;
+  const code = String(text).trim().toUpperCase();
+  if(!code) return;
+  scanDone = true;
+  const lend = loanMode === "lend";
+  try{
+    if(lend){
+      const st = await db.doc(`schools/${cur.sid}/students/${code}`).get();
+      if(!st.exists || st.data().deleted){ toast(`El código «${code}» no corresponde a ningún alumno`, true); setTimeout(() => { scanDone = false; }, 1500); return; }
+    }
+    stopScanner();
+    $app.innerHTML = loading("Registrando…");
+    loanResult(true, lend ? await doLend(code) : await doReturn(code));
+  }catch(e){ console.error(e); stopScanner(); loanResult(false, e.message || "No se pudo registrar"); }
+}
+function loanResult(ok, text){
+  const lend = loanMode === "lend";
+  $app.innerHTML = `<div class="bar"><h2>${loanHead()}</h2></div><div class="banner ${ok ? "" : "err"}"><span>${ok ? "✅ " : ""}${esc(text)}</span></div>
+    <nav class="menu"><button onclick="${ok ? "loanIsbnScreen()" : "loanStudentScreen()"}">${ok ? (lend ? "Prestar otro libro" : "Devolver otro libro") : "Escanear otro alumno"}</button><button class="ghost" onclick="renderLoans()">Volver</button></nav>`;
+}
+async function doLend(code){
+  const b = loanBook, bookRef = db.doc(`schools/${cur.sid}/books/${b.id}`), loanRef = db.collection(`schools/${cur.sid}/loans`).doc();
+  const used = new Set((await db.collection(`schools/${cur.sid}/loans`).where("isbn", "==", b.id).get()).docs.map(d => d.data()).filter(l => l.status === "active").map(l => l.copyNumber));
+  let copy = 1; while(used.has(copy)) copy++;   // primer número de ejemplar libre
+  const due = new Date(Date.now() + LOAN_DAYS * 864e5);
+  await db.runTransaction(async tx => {
+    const bs = await tx.get(bookRef), bk = bs.data();
+    if(!bs.exists || !(bk.availableCopies > 0)) throw new Error("No quedan ejemplares disponibles");
+    const left = bk.availableCopies - 1;
+    tx.update(bookRef, { availableCopies: left, activeLoans: (bk.activeLoans || 0) + 1, available: left > 0 });
+    tx.set(loanRef, { isbn: b.id, title: b.title || "", copyNumber: copy, studentCode: code, status: "active", loanDate: FV.serverTimestamp(), returnDate: firebase.firestore.Timestamp.fromDate(due), createdBy: me.uid });
+  });
+  return `Se ha registrado el préstamo del libro «${b.title}» al alumno ${code}. Fecha límite de devolución: ${due.toLocaleDateString("es-ES")}.`;
+}
+async function doReturn(code){
+  const b = loanBook, bookRef = db.doc(`schools/${cur.sid}/books/${b.id}`);
+  const open = (await db.collection(`schools/${cur.sid}/loans`).where("isbn", "==", b.id).where("studentCode", "==", code).get()).docs.filter(d => d.data().status === "active");
+  if(!open.length) throw new Error(`El alumno ${code} no tiene prestado «${b.title}».`);
+  const loanRef = open.sort((x, y) => ((x.data().loanDate || {}).seconds || 0) - ((y.data().loanDate || {}).seconds || 0))[0].ref;
+  await db.runTransaction(async tx => {
+    const ls = await tx.get(loanRef), bs = await tx.get(bookRef);
+    if(!ls.exists || ls.data().status !== "active") throw new Error("Ese préstamo ya no está activo");
+    tx.update(loanRef, { status: "returned", returnedAt: FV.serverTimestamp(), returnedBy: me.uid });
+    if(bs.exists){ const bk = bs.data(); tx.update(bookRef, { availableCopies: Math.min(bk.totalCopies || 0, (bk.availableCopies || 0) + 1), activeLoans: Math.max(0, (bk.activeLoans || 1) - 1), available: true }); }
+  });
+  return `Se ha registrado la devolución del libro «${b.title}» del alumno ${code}.`;
+}
+
+// ---------- Historial ----------
+const PAGE30 = 30;
+let histCache = [], histQ = "", histPage = 0, outList = [], outQ = "", outPage = 0;
+const dt = t => t && t.toDate ? t.toDate().toLocaleDateString("es-ES") : "—";
+const dtt = t => t && t.toDate ? t.toDate().toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" }) : "";
+const overdue = l => l.status === "active" && l.returnDate && l.returnDate.toDate() < new Date();
+const loanTag = l => overdue(l) ? ["off", "Retrasado"] : ({ active: ["wait", "Prestado"], returned: ["", "Devuelto"], lost: ["off", "Perdido"] }[l.status] || ["", l.status]);
+async function renderHistory(){
+  const fl = flashHtml();
+  $app.innerHTML = fl + loading("Cargando historial…");
+  try{ histCache = (await db.collection(`schools/${cur.sid}/loans`).orderBy("loanDate", "desc").get()).docs.map(d => ({ id: d.id, ...d.data() })); }catch(e){ fail(e); }
+  $app.innerHTML = fl + backBar("Historial") + `<div class="tools"><button onclick="renderOut()">Libros fuera de centro</button><button onclick="exportHistory()">Exportar historial a Excel</button></div>
+    <input class="search" placeholder="Buscar por libro, alumno o ISBN" value="${esc(histQ)}" oninput="histQ=this.value;histPage=0;drawHistory()"><div id="tbl"></div>`;
+  drawHistory();
+}
+function drawHistory(){
+  const q = histQ.toLowerCase(), list = histCache.filter(l => `${l.title} ${l.studentCode} ${l.isbn}`.toLowerCase().includes(q));
+  const pages = Math.max(1, Math.ceil(list.length / PAGE30)); histPage = Math.min(histPage, pages - 1);
+  const rows = list.slice(histPage * PAGE30, (histPage + 1) * PAGE30), pg = PAGER("setHistPage", histPage, pages);
+  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr><th style="width:32%">Libro</th><th style="width:15%">Alumno</th><th class="hm" style="width:17%">Préstamo</th><th style="width:17%">Devolución</th><th style="width:100px">Estado</th></tr></thead><tbody>` +
+    rows.map(l => { const t = loanTag(l); return `<tr><td><div class="ell">${esc(l.title || l.isbn)}</div></td><td>${esc(l.studentCode)}</td><td class="hm">${dt(l.loanDate)}</td><td>${dt(l.returnedAt || l.closedAt)}</td><td><span class="tag ${t[0]}">${t[1]}</span></td></tr>`; }).join("") +
+    `</tbody></table>${rows.length ? "" : '<div class="empty" style="padding:16px">Todavía no hay préstamos registrados.</div>'}</div>` + pg;
+}
+function setHistPage(p){ histPage = p; drawHistory(); document.getElementById("tbl").scrollIntoView({ block: "start" }); }
+function exportHistory(){
+  const rows = histCache.map(l => ({ ISBN: l.isbn, "Título": l.title || "", Alumno: l.studentCode, Ejemplar: l.copyNumber, "Fecha de préstamo": dtt(l.loanDate), "Fecha límite": dt(l.returnDate), "Devolución / cierre": dtt(l.returnedAt || l.closedAt), Estado: loanTag(l)[1] }));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Historial");
+  XLSX.writeFile(wb, `historial-${cur.name}.xlsx`);
+}
+
+// ---------- Libros fuera de centro ----------
+async function renderOut(){
+  const fl = flashHtml();
+  $app.innerHTML = fl + loading("Cargando…");
+  try{ outList = (await db.collection(`schools/${cur.sid}/loans`).where("status", "==", "active").get()).docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => String(a.studentCode).localeCompare(String(b.studentCode)) || ((a.loanDate || {}).seconds || 0) - ((b.loanDate || {}).seconds || 0)); }catch(e){ fail(e); }
+  $app.innerHTML = fl + `<div class="bar"><button class="ghost" onclick="renderHistory()">← Volver</button><h2>Libros fuera de centro</h2></div>
+    <input class="search" placeholder="Buscar por alumno o libro" value="${esc(outQ)}" oninput="outQ=this.value;outPage=0;drawOut()"><div id="tbl"></div>`;
+  drawOut();
+}
+function drawOut(){
+  const q = outQ.toLowerCase(), list = outList.filter(l => `${l.title} ${l.studentCode} ${l.isbn}`.toLowerCase().includes(q));
+  const pages = Math.max(1, Math.ceil(list.length / PAGE30)); outPage = Math.min(outPage, pages - 1);
+  const rows = list.slice(outPage * PAGE30, (outPage + 1) * PAGE30), pg = PAGER("setOutPage", outPage, pages);
+  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr><th style="width:16%">Alumno</th><th style="width:34%">Libro</th><th class="hm" style="width:18%">Préstamo</th><th style="width:20%">Fecha límite</th>${cur.admin ? '<th style="width:84px"></th>' : ""}</tr></thead><tbody>` +
+    rows.map(l => `<tr><td><strong>${esc(l.studentCode)}</strong></td><td><div class="ell">${esc(l.title || l.isbn)}</div></td><td class="hm">${dt(l.loanDate)}</td><td class="${overdue(l) ? "late" : ""}">${dt(l.returnDate)}</td>
+      ${cur.admin ? `<td><button class="small danger" title="Cerrar préstamo sin devolución" aria-label="Cerrar préstamo sin devolución" onclick="closeLoan('${esc(l.id)}')">Cerrar</button></td>` : ""}</tr>`).join("") +
+    `</tbody></table>${rows.length ? "" : '<div class="empty" style="padding:16px">No hay libros fuera del centro.</div>'}</div>` + pg;
+}
+function setOutPage(p){ outPage = p; drawOut(); document.getElementById("tbl").scrollIntoView({ block: "start" }); }
+async function closeLoan(id){
+  const l = outList.find(x => x.id === id);
+  if(!cur.admin || !l) return;
+  if(!confirm(`¿Cerrar el préstamo de «${l.title || l.isbn}» al alumno ${l.studentCode} sin que se haya devuelto?\n\nSe dará el libro por perdido y se descontará un ejemplar de la biblioteca.`)) return;
+  try{
+    const lr = db.doc(`schools/${cur.sid}/loans/${id}`), br = db.doc(`schools/${cur.sid}/books/${l.isbn}`);
+    await db.runTransaction(async tx => {
+      const ls = await tx.get(lr), bs = await tx.get(br);
+      if(!ls.exists || ls.data().status !== "active") throw new Error("El préstamo ya no está activo");
+      tx.update(lr, { status: "lost", closedAt: FV.serverTimestamp(), closedBy: me.uid });
+      if(bs.exists){
+        const bk = bs.data(), total = Math.max(0, (bk.totalCopies || 1) - 1), avail = Math.min(bk.availableCopies || 0, total);
+        tx.update(br, { totalCopies: total, activeLoans: Math.max(0, (bk.activeLoans || 1) - 1), availableCopies: avail, available: avail > 0 });
+      }
+    });
+    toast("Préstamo cerrado"); renderOut();
+  }catch(e){ fail(e); }
 }
 </script>
 </body>
