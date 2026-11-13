@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mailegutxoko</title>
+<style>
+:root{--bg:#f1f3f4;--card:#fff;--ink:#202124;--muted:#5f6368;--blue:#4285f4;--blue-d:#2f6fd6;--line:#dadce0;--red:#c5221f;--green:#188038}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+main{max-width:620px;margin:0 auto;padding:24px 16px 64px}
+header.top{text-align:center;margin:24px 0}
+header.top h1{margin:0;font-size:2.2rem}
+header.top p{margin:6px 0 0;color:var(--muted)}
+.user{display:flex;justify-content:flex-end;align-items:center;gap:8px;font-size:.85rem;color:var(--muted);min-height:36px}
+button{font:inherit;border:0;border-radius:8px;padding:12px 16px;background:var(--blue);color:#fff;cursor:pointer}
+button:hover{background:var(--blue-d)}
+button:focus-visible,input:focus-visible{outline:3px solid #1a73e8;outline-offset:2px}
+button.ghost{background:transparent;color:var(--blue-d);padding:8px 10px}
+button.ghost:hover{background:#e8f0fe}
+button.danger{background:var(--red)}
+button.small{padding:6px 12px;font-size:.9rem}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.panel h3{margin:0 0 12px;font-size:1.05rem}
+form{display:grid;gap:12px}
+label{display:grid;gap:4px;font-size:.85rem;color:var(--muted)}
+input{font:inherit;padding:10px;border:1px solid var(--line);border-radius:6px;width:100%;color:var(--ink)}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row .info{flex:1;min-width:0}
+.row small{display:block;color:var(--muted)}
+.acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.8rem;background:#e6f4ea;color:var(--green)}
+.tag.wait{background:#fef7e0;color:#b06000}
+.tag.off{background:#fce8e6;color:var(--red)}
+.empty{color:var(--muted);padding:8px 0}
+.menu{display:grid;gap:12px;margin:16px 0}
+.sname{text-align:center;font-size:1.4rem;font-weight:700;margin:8px 0}
+.bar{display:flex;gap:12px;align-items:center;margin-bottom:16px}
+.bar h2{margin:0;font-size:1.4rem}
+.banner{display:flex;gap:12px;align-items:center;justify-content:space-between;background:#e8f0fe;border:1px solid #aecbfa;color:#174ea6;border-radius:10px;padding:12px 16px;margin-bottom:16px}
+.banner.err{background:#fce8e6;border-color:#f5b5b1;color:var(--red)}
+#msg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#202124;color:#fff;padding:10px 18px;border-radius:8px;display:none;max-width:90vw}
+#msg.err{background:var(--red)}
+</style>
+</head>
+<body>
+<main>
+  <div class="user" id="userbar"></div>
+  <header class="top"><h1>📚 Mailegutxoko</h1><p>Ikastetxeko liburutegia</p></header>
+  <div id="app"><div class="empty">Cargando…</div></div>
+</main>
+<div id="msg" role="status"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-auth-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-firestore-compat.min.js"></script>
+<script>
+const SUPER_EMAIL = "j.borrego@irakasle.eus";
+firebase.initializeApp({
+  apiKey: "AIzaSyBcz8brF36QgFIv-Jn6MSTeJsMp-BzmExs",
+  authDomain: "mailegutxoko.firebaseapp.com",
+  projectId: "mailegutxoko",
+  storageBucket: "mailegutxoko.firebasestorage.app",
+  messagingSenderId: "1042844464428",
+  appId: "1:1042844464428:web:d2e93608ec4a2800bb2889"
+});
+const auth = firebase.auth(), db = firebase.firestore(), FV = firebase.firestore.FieldValue;
+const $app = document.getElementById("app");
+let me = null, isSuper = false, cur = null, flash = null, synced = false, dirList = [];
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function toast(t, err){ const m = document.getElementById("msg"); m.textContent = t; m.className = err ? "err" : ""; m.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => m.style.display = "none", 4000); }
+const fail = e => { console.error(e); toast(e.code === "failed-precondition" ? "Falta crear un índice en Firestore: abre la consola (F12) y pulsa el enlace del error." : (e.message || "Error"), true); };
+const memberRef = (sid, uid) => db.doc(`schools/${sid}/members/${uid}`);
+const note = (t, k) => { flash = { t, k }; };
+const flashHtml = () => { const f = flash; flash = null; return f ? `<div class="banner ${f.k || ""}" role="status">${esc(f.t)}</div>` : ""; };
+const loading = t => `<div class="empty">${t}</div>`;
+
+// ---------- Sesión ----------
+auth.onAuthStateChanged(async u => {
+  me = u;
+  const bar = document.getElementById("userbar");
+  if(!u){ bar.innerHTML = ""; return renderLogin(); }
+  isSuper = u.emailVerified && u.email === SUPER_EMAIL;
+  bar.innerHTML = `${esc(u.email)}${isSuper ? ' <span class="tag">Superadmin</span>' : ""} <button class="ghost small" id="out">Salir</button>`;
+  document.getElementById("out").onclick = () => auth.signOut();
+  try{
+    await db.collection("users").doc(u.uid).set({ email: u.email, displayName: u.displayName || "", lastLogin: FV.serverTimestamp() }, { merge: true });
+    const last = localStorage.getItem("school_" + u.uid);
+    last ? enterSchool(last) : renderChooser();
+  }catch(e){ fail(e); renderChooser(); }
+});
+
+function renderLogin(){
+  $app.innerHTML = `<div class="panel"><h3>Iniciar sesión</h3>
+    <button id="g" style="width:100%">Entrar con Google</button>
+    <p class="empty" style="text-align:center">o con correo y contraseña</p>
+    <form id="f"><label>Correo<input type="email" name="e" required autocomplete="email"></label>
+    <label>Contraseña (mínimo 6 caracteres)<input type="password" name="p" minlength="6" required autocomplete="current-password"></label>
+    <button>Entrar</button><button type="button" class="ghost" id="reg">Crear cuenta con este correo</button></form></div>`;
+  document.getElementById("g").onclick = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(fail);
+  const f = document.getElementById("f");
+  f.onsubmit = e => { e.preventDefault(); auth.signInWithEmailAndPassword(f.e.value, f.p.value).catch(fail); };
+  document.getElementById("reg").onclick = () => { if(f.reportValidity()) auth.createUserWithEmailAndPassword(f.e.value, f.p.value).catch(fail); };
+}
+
+// ---------- Lista de centros ----------
+async function renderChooser(){
+  cur = null; localStorage.removeItem("school_" + me.uid);
+  const fl = flashHtml();
+  $app.innerHTML = fl + loading("Cargando tus centros…");
+  let rows = [], owned = [], pending = [], alerts = [];
+  try{
+    if(isSuper){
+      const all = (await db.collection("schools").where("status", "==", "approved").get()).docs;
+      rows = all.map(d => ({ sid: d.id, schoolName: d.data().name, role: "admin", status: "active" }));
+      pending = (await db.collection("schools").where("status", "==", "pending").get()).docs;
+      if(!synced){ // mantiene al día el directorio público de centros aprobados
+        synced = true; const b = db.batch();
+        all.forEach(d => b.set(db.doc("directory/" + d.id), { name: d.data().name, centerCode: d.data().centerCode || "" }, { merge: true }));
+        await b.commit();
+      }
+    }else{
+      rows = (await db.collectionGroup("members").where("uid", "==", me.uid).get()).docs.map(d => ({ sid: d.ref.parent.parent.id, ...d.data() }));
+      for(const r of rows.filter(r => r.status === "active" && r.role === "admin")){
+        const n = (await db.collection(`schools/${r.sid}/members`).where("status", "==", "pending").get()).size;
+        if(n) alerts.push({ sid: r.sid, name: r.schoolName, n });
+      }
+    }
+    owned = (await db.collection("schools").where("ownerUid", "==", me.uid).get()).docs.filter(d => d.data().status !== "approved");
+  }catch(e){ fail(e); }
+  const st = { active: ["", "Activo"], pending: ["wait", "Pendiente de aprobación"], rejected: ["off", "Rechazado"] };
+  const alertHtml = alerts.map(a => `<div class="banner"><span>Hay ${a.n} solicitud${a.n > 1 ? "es" : ""} nueva${a.n > 1 ? "s" : ""} para unirse a «${esc(a.name)}».</span><button class="small" onclick="enterSchool('${a.sid}','members')">Ver</button></div>`).join("");
+  const rowHtml = rows.map(r => { const t = st[r.status] || st.pending;
+    return `<div class="row"><div class="info"><strong>${esc(r.schoolName)}</strong><small>${r.role === "admin" ? "Administrador" : "Usuario"} · <span class="tag ${t[0]}">${t[1]}</span></small></div>
+    ${r.status === "active" ? `<button class="small" onclick="enterSchool('${r.sid}')">Entrar</button>` : ""}</div>`; }).join("");
+  const ownHtml = owned.map(d => { const s = d.data(), rej = s.status === "rejected";
+    return `<div class="row"><div class="info"><strong>${esc(s.name)}</strong><small>Registro de centro · <span class="tag ${rej ? "off" : "wait"}">${rej ? "Rechazado" : "Pendiente de aprobación"}</span></small></div></div>`; }).join("");
+  const pendHtml = pending.map(d => { const s = d.data();
+    return `<div class="row"><div class="info"><strong>${esc(s.name)}</strong><small>Código: ${esc(s.centerCode || "—")} · ${esc(s.ownerEmail)}</small></div>
+    <div class="acts"><button class="small" onclick="approveSchool('${d.id}')">Aprobar</button><button class="small danger" onclick="rejectSchool('${d.id}')">Rechazar</button></div></div>`; }).join("");
+  $app.innerHTML = fl + alertHtml +
+    (isSuper ? `<div class="panel"><h3>Solicitudes de registro de centros</h3>${pendHtml || '<div class="empty">No hay solicitudes pendientes.</div>'}</div>` : "") +
+    `<div class="panel"><h3>${isSuper ? "Todos los centros" : "Mis centros"}</h3>${rowHtml + ownHtml || '<div class="empty">Todavía no tienes acceso a ningún centro.</div>'}</div>
+    <nav class="menu"><button onclick="renderJoin()">Unirme a un nuevo centro</button><button onclick="renderRegister()">Registrar un nuevo centro</button></nav>`;
+}
+
+// ---------- Registrar centro ----------
+function renderRegister(){
+  $app.innerHTML = `<div class="bar"><button class="ghost" onclick="renderChooser()">← Volver</button><h2>Registrar un nuevo centro</h2></div>
+    <div class="panel"><form id="new"><label>Nombre oficial del centro<input name="n" required></label>
+    <label>Código de centro<input name="c" required></label><button>Enviar solicitud</button></form></div>`;
+  document.getElementById("new").onsubmit = async e => {
+    e.preventDefault();
+    try{
+      await db.collection("schools").add({ name: e.target.n.value.trim(), centerCode: e.target.c.value.trim(), ownerUid: me.uid, ownerEmail: me.email, ownerName: me.displayName || "", status: "pending", createdAt: FV.serverTimestamp() });
+      note("Solicitud de registro de centro enviada. Queda pendiente para ser aprobado."); renderChooser();
+    }catch(err){ fail(err); }
+  };
+}
+
+// ---------- Unirme a un centro ----------
+async function renderJoin(){
+  const fl = flashHtml();
+  $app.innerHTML = fl + `<div class="bar"><button class="ghost" onclick="renderChooser()">← Volver</button><h2>Unirme a un centro</h2></div>` + loading("Cargando centros…");
+  try{
+    dirList = (await db.collection("directory").get()).docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name));
+  }catch(e){ fail(e); }
+  $app.innerHTML = fl + `<div class="bar"><button class="ghost" onclick="renderChooser()">← Volver</button><h2>Unirme a un centro</h2></div>
+    <div class="panel">${dirList.map((s, i) => `<div class="row"><div class="info"><strong>${esc(s.name)}</strong><small>${esc(s.centerCode || "")}</small></div>
+    <button class="small" onclick="joinSchool(${i})">Solicitar</button></div>`).join("") || '<div class="empty">Todavía no hay centros aprobados.</div>'}</div>`;
+}
+async function joinSchool(i){
+  const s = dirList[i];
+  try{
+    if((await memberRef(s.id, me.uid).get()).exists){ note("Ya tienes acceso o una solicitud pendiente en este centro.", "err"); return renderJoin(); }
+    await memberRef(s.id, me.uid).set({ uid: me.uid, email: me.email, displayName: me.displayName || "", role: "user", status: "pending", schoolName: s.name, createdAt: FV.serverTimestamp() });
+    note("Solicitud enviada. Queda pendiente de ser aprobada para unirte al centro."); renderChooser();
+  }catch(e){ fail(e); }
+}
+
+// ---------- Superadmin: aprobar centros ----------
+async function approveSchool(id){
+  try{
+    const ref = db.doc("schools/" + id), s = (await ref.get()).data(), b = db.batch();
+    b.update(ref, { status: "approved" });
+    b.set(db.doc("directory/" + id), { name: s.name, centerCode: s.centerCode || "" });
+    b.set(memberRef(id, s.ownerUid), { uid: s.ownerUid, email: s.ownerEmail, displayName: s.ownerName || "", role: "admin", status: "active", schoolName: s.name, createdAt: FV.serverTimestamp() });
+    await b.commit(); toast("Centro aprobado"); renderChooser();
+  }catch(e){ fail(e); }
+}
+async function rejectSchool(id){
+  try{ await db.doc("schools/" + id).update({ status: "rejected" }); toast("Centro rechazado"); renderChooser(); }catch(e){ fail(e); }
+}
+
+// ---------- Dashboard del centro ----------
+async function enterSchool(sid, view){
+  try{
+    let m;
+    if(isSuper){
+      const s = await db.doc("schools/" + sid).get();
+      if(!s.exists) return renderChooser();
+      m = { schoolName: s.data().name, role: "admin" };
+    }else{
+      const d = await memberRef(sid, me.uid).get();
+      if(!d.exists || d.data().status !== "active") return renderChooser();
+      m = d.data();
+    }
+    cur = { sid, name: m.schoolName, admin: m.role === "admin" };
+    localStorage.setItem("school_" + me.uid, sid);
+    view === "members" ? renderMembers() : renderDashboard();
+  }catch(e){ fail(e); renderChooser(); }
+}
+async function renderDashboard(){
+  const fl = flashHtml();
+  let n = 0;
+  try{ if(cur.admin) n = (await db.collection(`schools/${cur.sid}/members`).where("status", "==", "pending").get()).size; }catch(e){ fail(e); }
+  window.soon = () => toast("Esta sección se activa en la siguiente fase");
+  $app.innerHTML = fl + (n ? `<div class="banner"><span>Hay ${n} nueva${n > 1 ? "s" : ""} solicitud${n > 1 ? "es" : ""} para unirse a tu centro.</span><button class="small" onclick="renderMembers()">Ver</button></div>` : "") +
+    `<div class="sname">🏫 ${esc(cur.name)} <span class="tag">${cur.admin ? "Administrador" : "Usuario"}</span></div>
+    <div style="text-align:center"><button class="ghost" onclick="renderChooser()">Cambiar escuela</button></div>
+    <nav class="menu"><button onclick="soon()">Libros</button><button onclick="soon()">Alumnado</button><button onclick="soon()">Préstamos</button><button onclick="soon()">Historial</button><button onclick="renderMembers()">Miembros</button></nav>`;
+}
+
+// ---------- Miembros ----------
+async function renderMembers(){
+  const fl = flashHtml();
+  $app.innerHTML = fl + loading("Cargando miembros…");
+  let docs = [];
+  try{ docs = (await db.collection(`schools/${cur.sid}/members`).get()).docs.filter(d => d.data().email !== SUPER_EMAIL); }catch(e){ fail(e); }
+  const by = f => docs.filter(d => f(d.data())).sort((a, b) => (a.data().displayName || a.data().email).localeCompare(b.data().displayName || b.data().email));
+  const row = (d, acts) => { const r = d.data(); return `<div class="row"><div class="info"><strong>${esc(r.displayName || r.email)}${d.id === me.uid ? " (tú)" : ""}</strong><small>${esc(r.email)}</small></div>
+    <div class="acts">${cur.admin ? acts : ""}</div></div>`; };
+  const btn = (t, fn, cls = "") => `<button class="small ${cls}" onclick="${fn}">${t}</button>`;
+  const sec = (title, list, empty) => `<div class="panel"><h3>${title} (${list.length})</h3>${list.join("") || `<div class="empty">${empty}</div>`}</div>`;
+  const pend = by(r => r.status === "pending").map(d => row(d, btn("Aceptar", `setMember('${d.id}',{status:'active',role:'user'})`) + btn("Rechazar", `removeMember('${d.id}')`, "danger")));
+  const adm = by(r => r.status === "active" && r.role === "admin").map(d => row(d, d.id === me.uid ? "" : btn("Pasar a usuario", `setMember('${d.id}',{role:'user'})`)));
+  const usr = by(r => r.status === "active" && r.role !== "admin").map(d => row(d, btn("Hacer administrador", `setMember('${d.id}',{role:'admin'})`) + btn("Eliminar", `removeMember('${d.id}')`, "danger")));
+  $app.innerHTML = fl + `<div class="bar"><button class="ghost" onclick="renderDashboard()">← Volver</button><h2>Miembros</h2></div>` +
+    (pend.length || cur.admin ? sec("Solicitudes pendientes", pend, "No hay solicitudes pendientes.") : "") +
+    sec("Administradores", adm, "Sin administradores.") + sec("Usuarios", usr, "Sin usuarios.");
+}
+async function setMember(uid, data){
+  try{ await memberRef(cur.sid, uid).update(data); toast("Cambio guardado"); renderMembers(); }catch(e){ fail(e); }
+}
+async function removeMember(uid){
+  if(!confirm("¿Seguro que quieres quitar a esta persona del centro?")) return;
+  try{ await memberRef(cur.sid, uid).delete(); toast("Persona eliminada"); renderMembers(); }catch(e){ fail(e); }
+}
+</script>
+</body>
+</html>
