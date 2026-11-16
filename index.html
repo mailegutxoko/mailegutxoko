@@ -78,13 +78,25 @@ th .arr{color:var(--blue-d)}
 .camBox{position:relative;width:100%;max-width:480px;margin:0 auto;border-radius:8px;overflow:hidden;background:#000}
 .camBox video{width:100%;display:block}
 .camBox canvas{display:none}
+.steps{display:flex;list-style:none;padding:0;margin:0 0 16px;gap:4px}
+.steps li{flex:1;min-width:0;text-align:center;font-size:.78rem;color:var(--muted);position:relative;overflow-wrap:anywhere}
+.steps li b{position:relative;z-index:1;display:grid;place-items:center;width:30px;height:30px;margin:0 auto 6px;border-radius:50%;background:#dadce0;color:#5f6368;font-size:.9rem}
+.steps li:not(:first-child)::before{content:"";position:absolute;top:14px;right:50%;width:100%;height:3px;background:#dadce0}
+.steps li.done b{background:var(--green);color:#fff}
+.steps li.done::before,.steps li.cur::before{background:var(--green)}
+.steps li.cur b{background:var(--blue);color:#fff;box-shadow:0 0 0 4px #d2e3fc}
+.steps li.cur{color:var(--ink);font-weight:700}
+.scanhint{display:flex;gap:12px;align-items:center;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:1.05rem;font-weight:600;background:#e8f0fe;color:#174ea6}
+.scanhint.qr{background:#fef7e0;color:#8a5a00}
+.scanhint .ico{font-size:1.8rem}
+#lang{font-weight:700;border:1px solid var(--line);background:#fff;margin-left:8px}
 #msg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#202124;color:#fff;padding:10px 18px;border-radius:8px;display:none;max-width:90vw}
 #msg.err{background:var(--red)}
 </style>
 </head>
 <body>
 <main>
-  <div class="user" id="userbar"></div>
+  <div class="user"><span id="userbar"></span><button class="ghost small" id="lang" type="button" aria-label="Cambiar idioma" onclick="setLang(lang === 'eus' ? 'es' : 'eus')">EUS</button></div>
   <header class="top"><h1>📚 Mailegutxoko</h1><p>Ikastetxeko liburutegia</p></header>
   <div id="app"><div class="empty">Cargando…</div></div>
 </main>
@@ -109,6 +121,7 @@ th .arr{color:var(--blue-d)}
   // Initialize Firebase
   const app = initializeApp(firebaseConfig);
 </script>
+
   
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-auth-compat.min.js"></script>
@@ -141,31 +154,102 @@ const flashHtml = () => { const f = flash; flash = null; return f ? `<div class=
 const loading = t => `<div class="empty">${t}</div>`;
 
 // ---------- Sesión ----------
-auth.onAuthStateChanged(async u => {
-  me = u;
+function setBar(){
   const bar = document.getElementById("userbar");
-  if(!u){ bar.innerHTML = ""; return renderLogin(); }
-  isSuper = u.emailVerified && u.email === SUPER_EMAIL;
-  bar.innerHTML = `${esc(u.email)}${isSuper ? ' <span class="tag">Superadmin</span>' : ""} <button class="ghost small" id="out">Salir</button>`;
-  document.getElementById("out").onclick = () => auth.signOut();
+  bar.innerHTML = me ? `${esc(me.email)}${isSuper ? ' <span class="tag">Superadmin</span>' : ""} <button class="ghost small" id="out">Salir</button>` : "";
+  if(me) document.getElementById("out").onclick = () => auth.signOut();
+}
+let verifyTimer = null;
+const authLang = () => { auth.languageCode = lang === "eus" ? "eu" : "es"; };
+auth.onAuthStateChanged(async u => {
+  me = u; isSuper = false; clearInterval(verifyTimer); setBar();
+  if(!u) return renderLogin();
+  if(!u.emailVerified && u.providerData.some(p => p.providerId === "password")) return renderVerify();
+  startSession(u);
+});
+async function startSession(u){
+  me = u; isSuper = u.emailVerified && u.email === SUPER_EMAIL; setBar();
   try{
     await db.collection("users").doc(u.uid).set({ email: u.email, displayName: u.displayName || "", lastLogin: FV.serverTimestamp() }, { merge: true });
     const last = localStorage.getItem("school_" + u.uid);
     last ? enterSchool(last) : renderChooser();
   }catch(e){ fail(e); renderChooser(); }
-});
+}
 
+// 1) Pantalla inicial: Google
 function renderLogin(){
   $app.innerHTML = `<div class="panel"><h3>Iniciar sesión</h3>
     <button id="g" style="width:100%">Entrar con Google</button>
-    <p class="empty" style="text-align:center">o con correo y contraseña</p>
-    <form id="f"><label>Correo<input type="email" name="e" required autocomplete="email"></label>
-    <label>Contraseña (mínimo 6 caracteres)<input type="password" name="p" minlength="6" required autocomplete="current-password"></label>
-    <button>Entrar</button><button type="button" class="ghost" id="reg">Crear cuenta con este correo</button></form></div>`;
+    <button class="ghost" id="viaMail" style="width:100%;margin-top:12px">o con correo y contraseña</button></div>`;
   document.getElementById("g").onclick = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(authFail);
+  document.getElementById("viaMail").onclick = renderLoginMail;
+}
+// 2) Correo y contraseña
+function renderLoginMail(){
+  $app.innerHTML = `<div class="bar"><button class="ghost" id="back">← Volver</button><h2>Correo y contraseña</h2></div>
+    <div class="panel"><form id="f"><label>Correo<input type="email" name="e" required autocomplete="email"></label>
+    <label>Contraseña<input type="password" name="p" required autocomplete="current-password"></label><button>Entrar</button></form>
+    <div class="tools" style="margin:12px 0 0;justify-content:space-between"><button class="ghost" id="toSignup">Crear cuenta</button><button class="ghost" id="toReset">Recuperar contraseña</button></div></div>`;
+  document.getElementById("back").onclick = renderLogin;
+  document.getElementById("toSignup").onclick = renderSignup;
+  document.getElementById("toReset").onclick = renderReset;
   const f = document.getElementById("f");
-  f.onsubmit = e => { e.preventDefault(); auth.signInWithEmailAndPassword(f.e.value, f.p.value).catch(authFail); };
-  document.getElementById("reg").onclick = () => { if(f.reportValidity()) auth.createUserWithEmailAndPassword(f.e.value, f.p.value).catch(authFail); };
+  f.onsubmit = e => { e.preventDefault(); auth.signInWithEmailAndPassword(f.e.value.trim(), f.p.value).catch(authFail); };
+}
+// 3) Crear cuenta (con confirmación por correo)
+function renderSignup(){
+  $app.innerHTML = `<div class="bar"><button class="ghost" id="back">← Volver</button><h2>Crear cuenta</h2></div>
+    <div class="panel"><form id="f"><label>Nombre<input name="n" required autocomplete="given-name"></label><label>Apellidos<input name="a" required autocomplete="family-name"></label>
+    <label>Correo<input type="email" name="e" required autocomplete="email"></label>
+    <label>Contraseña (mínimo 6 caracteres)<input type="password" name="p" minlength="6" required autocomplete="new-password"></label>
+    <label>Repite la contraseña<input type="password" name="p2" minlength="6" required autocomplete="new-password"></label><button>Crear cuenta</button></form></div>`;
+  document.getElementById("back").onclick = renderLoginMail;
+  const f = document.getElementById("f");
+  f.onsubmit = async e => {
+    e.preventDefault();
+    if(f.p.value !== f.p2.value) return toast("Las contraseñas no coinciden.", true);
+    try{
+      authLang();
+      const cred = await auth.createUserWithEmailAndPassword(f.e.value.trim(), f.p.value);
+      await cred.user.updateProfile({ displayName: `${f.n.value.trim()} ${f.a.value.trim()}` });
+      await cred.user.sendEmailVerification();
+    }catch(err){ authFail(err); }
+  };
+}
+// 4) Recuperar contraseña
+function renderReset(){
+  $app.innerHTML = `<div class="bar"><button class="ghost" id="back">← Volver</button><h2>Recuperar contraseña</h2></div>
+    <div class="panel"><p style="margin-top:0">Escribe tu correo electrónico y te enviaremos un mensaje para crear una nueva contraseña.</p>
+    <form id="f"><label>Correo<input type="email" name="e" required autocomplete="email"></label><button>Solicitar nueva contraseña</button></form></div>`;
+  document.getElementById("back").onclick = renderLoginMail;
+  const f = document.getElementById("f");
+  f.onsubmit = async e => {
+    e.preventDefault();
+    try{
+      authLang(); await auth.sendPasswordResetEmail(f.e.value.trim());
+      toast("Si ese correo tiene una cuenta, recibirás un mensaje con un enlace para crear una nueva contraseña.");
+    }catch(err){
+      if(err.code === "auth/network-request-failed" || err.code === "auth/too-many-requests") authFail(err);
+      else toast("Si ese correo tiene una cuenta, recibirás un mensaje con un enlace para crear una nueva contraseña.");
+    }
+  };
+}
+// 5) Esperando la confirmación del correo
+function renderVerify(){
+  $app.innerHTML = `<div class="panel"><h3>Confirma tu correo</h3>
+    <div class="banner"><span>Te hemos enviado un correo a ${esc(me.email)}. Abre el mensaje y pulsa el enlace para confirmar tu cuenta. Después vuelve aquí.</span></div>
+    <div class="tools"><button id="chk">Ya lo he confirmado</button><button class="ghost" id="rs">Reenviar correo</button></div></div>`;
+  document.getElementById("chk").onclick = () => checkVerified(false);
+  document.getElementById("rs").onclick = async () => {
+    try{ authLang(); await me.sendEmailVerification(); toast("Correo de confirmación reenviado."); }catch(err){ authFail(err); }
+  };
+  clearInterval(verifyTimer); verifyTimer = setInterval(() => checkVerified(true), 4000);
+}
+async function checkVerified(silent){
+  const u = auth.currentUser; if(!u) return;
+  try{ await u.reload(); }catch(e){ return; }
+  if(u.emailVerified){ clearInterval(verifyTimer); await u.getIdToken(true); startSession(u); }
+  else if(!silent) toast("Todavía no has confirmado el correo.", true);
 }
 
 // ---------- Lista de centros ----------
@@ -324,7 +408,7 @@ function askDelete(sid){
     <input autocomplete="off" aria-label="Escribe ELIMINAR"><button class="danger" disabled>Eliminar (5)</button></div>`;
   document.body.appendChild(o);
   const inp = o.querySelector("input"), go = o.querySelector(".danger"); let left = 5;
-  const upd = () => { go.disabled = !(left <= 0 && inp.value === "ELIMINAR"); go.textContent = left > 0 ? `Eliminar (${left})` : "Eliminar"; };
+  const upd = () => { go.disabled = !(left <= 0 && ["ELIMINAR", "EZABATU"].includes(inp.value.trim().toUpperCase())); go.textContent = left > 0 ? `Eliminar (${left})` : "Eliminar"; };
   const t = setInterval(() => { left--; if(left <= 0) clearInterval(t); upd(); }, 1000);
   const close = () => { clearInterval(t); document.removeEventListener("keydown", onKey); o.remove(); };
   const onKey = e => { if(e.key === "Escape") close(); };
@@ -441,7 +525,7 @@ async function deleteBook(id){
 }
 function exportBooks(){
   const rows = booksCache.map(b => ({ ISBN: b.isbn || b.id, "Título": b.title, Autor: b.author, Editorial: b.publisher, "Ejemplares totales": b.totalCopies, "Disponibles": b.availableCopies, "Prestados": b.activeLoans || 0 }));
-  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Biblioteca");
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(trKeys)), trs("Biblioteca"));
   XLSX.writeFile(wb, `biblioteca-${cur.name}.xlsx`);
 }
 
@@ -552,7 +636,7 @@ async function onIsbn(code){
   try{ const d = await db.doc(`schools/${cur.sid}/books/${isbn}`).get(); exists = d.exists; total = exists ? d.data().totalCopies : 0; }catch(e){ fail(e); }
   scanned = { isbn, info, exists };
   if(!info){
-    $app.innerHTML = addBar("Añadir con escáner") + `<div class="panel"><p style="margin-top:0">No he encontrado datos para el ISBN <strong>${esc(isbn)}</strong>.</p>
+    $app.innerHTML = addBar("Añadir con escáner") + `<div class="panel"><p style="margin-top:0">No he encontrado datos para el ISBN ${esc(isbn)}.</p>
       <div class="tools"><button onclick="renderManual('${isbn}')">Rellenar manualmente</button><button class="ghost" onclick="renderScan()">Escanear otro</button></div></div>`;
     return;
   }
@@ -685,33 +769,39 @@ function renderLoans(){
   const fl = flashHtml();
   $app.innerHTML = fl + backBar("Préstamos/Devoluciones") + `<nav class="menu"><button onclick="startLoan('lend')">Prestar</button><button onclick="startLoan('return')">Devolver</button></nav>`;
 }
-function scanScreen(title, text, kind, cb, back, label){
+function scanScreen(title, text, kind, cb, back, label, step){
   stopScanner(); scanDone = false; window._cb = cb;
-  $app.innerHTML = `<div class="bar"><button class="ghost" onclick="${back}">← Volver</button><h2>${title}</h2></div><div class="panel"><p style="margin-top:0">${text}</p>
+  $app.innerHTML = `<div class="bar"><button class="ghost" onclick="${back}">← Volver</button><h2>${title}</h2></div>${step ? stepper(step) : ""}
+    <div class="panel"><div class="scanhint ${kind === "qr" ? "qr" : ""}"><span class="ico">${kind === "qr" ? "👤" : "📖"}</span><span>${text}</span></div>
     <div id="camBox" class="camBox"><video id="cam" playsinline muted autoplay></video></div>
     <p class="empty" id="scanStatus">Abriendo cámara…</p>
     <form class="isbnform" onsubmit="event.preventDefault();window._cb(this.code.value)"><label>${label}<input name="code" required></label><button>Continuar</button></form></div>`;
   startScan(kind, cb);
 }
+const STEPS = ["Escanear ISBN del libro", "Confirmar libro", "Escanear QR del alumno"];
+function stepper(n){   // n = paso actual (1-4); 5 = todo completado
+  const L = [...STEPS, loanMode === "lend" ? "Préstamo confirmado" : "Devolución confirmada"];
+  return `<ol class="steps">${L.map((l, i) => `<li class="${i + 1 < n ? "done" : i + 1 === n ? "cur" : ""}"><b>${i + 1 < n ? "✓" : i + 1}</b>${l}</li>`).join("")}</ol>`;
+}
 const loanHead = () => loanMode === "lend" ? "Prestar libro" : "Devolver libro";
 function startLoan(mode){ loanMode = mode; loanIsbnScreen(); }
 function loanIsbnScreen(){
-  scanScreen(loanHead(), "Escanea el ISBN del libro (el código de barras de la contraportada).", "isbn", onLoanIsbn, "renderLoans()", "¿No lo detecta? Escribe el ISBN");
+  scanScreen(loanHead(), "Escanea el ISBN del libro: el código de barras de la contraportada.", "isbn", onLoanIsbn, "renderLoans()", "¿No lo detecta? Escribe el ISBN", 1);
 }
 function loanStudentScreen(){
-  scanScreen(loanHead(), "Escanea el QR del alumno.", "qr", onLoanStudent, "loanIsbnScreen()", "¿No lo detecta? Escribe el código del alumno");
+  scanScreen(loanHead(), "Escanea el QR del alumno: el cuadrado de su tarjeta.", "qr", onLoanStudent, "loanIsbnScreen()", "¿No lo detecta? Escribe el código del alumno", 3);
 }
 async function onLoanIsbn(code){
   if(scanDone) return;
   const isbn = toIsbn13(code);
   if(!/^\d{13}$/.test(isbn)) return toast("ISBN no válido", true);
   scanDone = true; stopScanner();
-  const lend = loanMode === "lend", bar = `<div class="bar"><button class="ghost" onclick="loanIsbnScreen()">← Volver</button><h2>${loanHead()}</h2></div>`;
+  const lend = loanMode === "lend", bar = `<div class="bar"><button class="ghost" onclick="loanIsbnScreen()">← Volver</button><h2>${loanHead()}</h2></div>${stepper(2)}`;
   $app.innerHTML = bar + loading("Buscando el libro…");
   let d;
   try{ d = await db.doc(`schools/${cur.sid}/books/${isbn}`).get(); }catch(e){ fail(e); return loanIsbnScreen(); }
   if(!d.exists){
-    $app.innerHTML = bar + `<div class="panel"><p style="margin-top:0">El libro con ISBN <strong>${esc(isbn)}</strong> no está en la biblioteca de este centro.</p>
+    $app.innerHTML = bar + `<div class="panel"><p style="margin-top:0">El libro con ISBN ${esc(isbn)} no está en la biblioteca de este centro.</p>
       <div class="tools">${cur.admin ? `<button onclick="scanDone=false;onIsbn('${isbn}')">Incorporarlo a la biblioteca</button>` : ""}<button class="ghost" onclick="loanIsbnScreen()">Escanear otro</button></div></div>`;
     return;
   }
@@ -743,7 +833,7 @@ async function onLoanStudent(text){
 }
 function loanResult(ok, text){
   const lend = loanMode === "lend";
-  $app.innerHTML = `<div class="bar"><h2>${loanHead()}</h2></div><div class="banner ${ok ? "" : "err"}"><span>${ok ? "✅ " : ""}${esc(text)}</span></div>
+  $app.innerHTML = `<div class="bar"><h2>${loanHead()}</h2></div>${stepper(ok ? 5 : 3)}<div class="banner ${ok ? "" : "err"}"><span>${ok ? "✅ " : ""}${esc(text)}</span></div>
     <nav class="menu"><button onclick="${ok ? "loanIsbnScreen()" : "loanStudentScreen()"}">${ok ? (lend ? "Prestar otro libro" : "Devolver otro libro") : "Escanear otro alumno"}</button><button class="ghost" onclick="renderLoans()">Volver</button></nav>`;
 }
 async function doLend(code){
@@ -799,8 +889,8 @@ function drawHistory(){
 }
 function setHistPage(p){ histPage = p; drawHistory(); document.getElementById("tbl").scrollIntoView({ block: "start" }); }
 function exportHistory(){
-  const rows = histCache.map(l => ({ ISBN: l.isbn, "Título": l.title || "", Alumno: l.studentCode, Ejemplar: l.copyNumber, "Fecha de préstamo": dtt(l.loanDate), "Fecha límite": dt(l.returnDate), "Devolución / cierre": dtt(l.returnedAt || l.closedAt), Estado: loanTag(l)[1] }));
-  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Historial");
+  const rows = histCache.map(l => ({ ISBN: l.isbn, "Título": l.title || "", Alumno: l.studentCode, Ejemplar: l.copyNumber, "Fecha de préstamo": dtt(l.loanDate), "Fecha límite": dt(l.returnDate), "Devolución / cierre": dtt(l.returnedAt || l.closedAt), Estado: trs(loanTag(l)[1]) }));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(trKeys)), trs("Historial"));
   XLSX.writeFile(wb, `historial-${cur.name}.xlsx`);
 }
 
@@ -879,6 +969,142 @@ const gStu = s => s.id;
 const gLoan = (l, k) => k === "title" ? (l.title || l.isbn || "") : k === "loanDate" ? secs(l.loanDate) : k === "returnDate" ? secs(l.returnDate)
   : k === "end" ? secs(l.returnedAt || l.closedAt) : k === "status" ? loanTag(l)[1] : (l[k] || "");
 const gDel = (s, k) => k === "deletedAt" ? secs(s.deletedAt) : s.id;
+// ---------- Idioma: castellano / euskara ----------
+let lang = localStorage.getItem("lang") === "eus" ? "eus" : "es";
+const EU = {
+"Cargando…":"Kargatzen…","Iniciar sesión":"Hasi saioa","Entrar con Google":"Sartu Google-rekin","o con correo y contraseña":"edo posta elektronikoarekin eta pasahitzarekin",
+"Correo y contraseña":"Posta elektronikoa eta pasahitza","Correo":"Posta elektronikoa","Contraseña":"Pasahitza","Contraseña (mínimo 6 caracteres)":"Pasahitza (gutxienez 6 karaktere)",
+"Repite la contraseña":"Errepikatu pasahitza","Entrar":"Sartu","Salir":"Irten","Crear cuenta":"Sortu kontua","Recuperar contraseña":"Pasahitza berreskuratu",
+"Nombre":"Izena","Apellidos":"Abizenak","Solicitar nueva contraseña":"Eskatu pasahitz berria",
+"Escribe tu correo electrónico y te enviaremos un mensaje para crear una nueva contraseña.":"Idatzi zure posta elektronikoa eta pasahitz berri bat sortzeko mezu bat bidaliko dizugu.",
+"Confirma tu correo":"Berretsi zure posta elektronikoa","Ya lo he confirmado":"Jada berretsi dut","Reenviar correo":"Bidali mezua berriro",
+"Las contraseñas no coinciden.":"Pasahitzak ez datoz bat.","Todavía no has confirmado el correo.":"Oraindik ez duzu posta berretsi.","Correo de confirmación reenviado.":"Berrespen mezua berriro bidali da.",
+"Si ese correo tiene una cuenta, recibirás un mensaje con un enlace para crear una nueva contraseña.":"Posta horrek konturik badu, pasahitz berri bat sortzeko esteka duen mezu bat jasoko duzu.",
+"Usuario o contraseña incorrectos.":"Erabiltzailea edo pasahitza okerrak.","Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo.":"Saiakera huts gehiegi. Itxaron minutu batzuk eta saiatu berriro.",
+"Ya existe una cuenta con ese correo. Prueba a iniciar sesión.":"Badago kontu bat posta elektroniko horrekin. Saiatu saioa hasten.","La contraseña es demasiado débil (mínimo 6 caracteres).":"Pasahitza ahulegia da (gutxienez 6 karaktere).",
+"No hay conexión con el servidor. Revisa tu internet.":"Ez dago zerbitzariarekin konexiorik. Begiratu zure internet konexioa.","Esta cuenta está desactivada.":"Kontu hau desaktibatuta dago.",
+"Este dominio no está autorizado en Firebase (Authentication → Configuración → Dominios autorizados).":"Domeinu hau ez dago baimenduta Firebasen (Authentication → Settings → Authorized domains).",
+"No se pudo iniciar sesión. Inténtalo de nuevo.":"Ezin izan da saioa hasi. Saiatu berriro.",
+"Falta crear un índice en Firestore: abre la consola (F12) y pulsa el enlace del error.":"Indize bat falta da Firestoren: ireki kontsola (F12) eta sakatu errorearen esteka.",
+"Cargando tus centros…":"Zure ikastetxeak kargatzen…","Activo":"Aktibo","Pendiente de aprobación":"Onarpenaren zain","Rechazado":"Baztertua","Rechazada":"Baztertua",
+"Administrador ·":"Administratzailea ·","Usuario ·":"Erabiltzailea ·","Registro de centro ·":"Ikastetxearen erregistroa ·","Administrador":"Administratzailea","Usuario":"Erabiltzailea",
+"Solicitudes de registro de centros":"Ikastetxeak erregistratzeko eskaerak","No hay solicitudes pendientes.":"Ez dago eskaera zain.","Todos los centros":"Ikastetxe guztiak","Mis centros":"Nire ikastetxeak",
+"Todavía no tienes acceso a ningún centro.":"Oraindik ez duzu ikastetxerik eskuragarri.","Unirme a un nuevo centro":"Ikastetxe berri batean sartu","Registrar un nuevo centro":"Ikastetxe berri bat erregistratu",
+"Aprobar":"Onartu","Rechazar":"Baztertu","Entrar ":"Sartu","Ver":"Ikusi","Editar centro":"Editatu ikastetxea","Eliminar centro":"Ezabatu ikastetxea",
+"← Volver":"← Atzera","Nombre oficial del centro":"Ikastetxearen izen ofiziala","Código de centro":"Ikastetxearen kodea","Enviar solicitud":"Bidali eskaera",
+"Solicitud de registro de centro enviada. Queda pendiente para ser aprobado.":"Ikastetxea erregistratzeko eskaera bidali da. Onartzeko zain geratzen da.",
+"Unirme a un centro":"Ikastetxe batean sartu","Cargando centros…":"Ikastetxeak kargatzen…","Solicitar":"Eskatu","Todavía no hay centros aprobados.":"Oraindik ez dago ikastetxe onartuik.",
+"Ya tienes acceso o una solicitud pendiente en este centro.":"Dagoeneko sarbidea edo eskaera zain bat duzu ikastetxe honetan.",
+"Solicitud enviada. Queda pendiente de ser aprobada para unirte al centro.":"Eskaera bidali da. Ikastetxean sartzeko onartzearen zain geratzen da.",
+"Centro aprobado":"Ikastetxea onartu da","Centro rechazado":"Ikastetxea baztertu da","Cambiar escuela":"Aldatu ikastetxea",
+"Libros":"Liburuak","Alumnado":"Ikasleak","Préstamos/Devoluciones":"Maileguak/Itzulketak","Historial":"Historiala","Miembros":"Kideak",
+"Cargando miembros…":"Kideak kargatzen…","Solicitudes pendientes":"Eskaera zain","Administradores":"Administratzaileak","Usuarios":"Erabiltzaileak",
+"Sin administradores.":"Administratzailerik ez.","Sin usuarios.":"Erabiltzailerik ez.","Aceptar":"Onartu","Pasar a usuario":"Erabiltzaile bihurtu","Hacer administrador":"Administratzaile egin",
+"Eliminar":"Ezabatu","Cambio guardado":"Aldaketa gorde da","Persona eliminada":"Pertsona ezabatu da","¿Seguro que quieres quitar a esta persona del centro?":"Ziur zaude pertsona hau ikastetxetik kendu nahi duzula?",
+"Editar libro":"Editatu liburua","Guardar cambios":"Gorde aldaketak","Centro actualizado.":"Ikastetxea eguneratu da.","Centro eliminado":"Ikastetxea ezabatu da",
+"Si quieres eliminar el centro, escribe ELIMINAR en la siguiente casilla para borrarlo.":"Ikastetxea ezabatu nahi baduzu, idatzi EZABATU hurrengo laukian ezabatzeko.","Cerrar":"Itxi","Escribe ELIMINAR":"Idatzi EZABATU",
+"Cargando libros…":"Liburuak kargatzen…","Incorporar libro":"Liburua gehitu","Exportar biblioteca a Excel":"Esportatu liburutegia Excelera","Buscar por título, autor o ISBN":"Bilatu izenburua, egilea edo ISBN bidez",
+"Título":"Izenburua","Autor":"Egilea","Editorial":"Argitaletxea","ISBN":"ISBN","Disponibles":"Eskuragarri","Ningún libro coincide con la búsqueda.":"Ez dago bilaketarekin bat datorren libururik.",
+"Todavía no hay libros.":"Oraindik ez dago libururik.","Eliminar libro":"Ezabatu liburua","Ejemplares totales":"Ale guztiak","Libro actualizado.":"Liburua eguneratu da.",
+"No se puede eliminar: tiene préstamos activos":"Ezin da ezabatu: maileguak aktiboak ditu","Libro eliminado.":"Liburua ezabatu da.","Página anterior":"Aurreko orrialdea","Página siguiente":"Hurrengo orrialdea",
+"← Volver a libros":"← Atzera liburuetara","Añadir con escáner":"Gehitu eskanerrarekin","Añadir manualmente":"Gehitu eskuz","Ejemplares":"Aleak","Guardar libro":"Gorde liburua",
+"Ya existe un libro con ese ISBN":"Badago liburu bat ISBN horrekin","Libro incorporado a la biblioteca.":"Liburua liburutegira gehitu da.","ISBN no válido":"ISBN baliogabea","Autor desconocido":"Egile ezezaguna",
+"¿Es este el libro que quieres añadir?":"Hau al da gehitu nahi duzun liburua?","Ejemplares a añadir":"Gehitzeko aleak","Sí, añadir":"Bai, gehitu","No, escanear otro":"Ez, eskaneatu beste bat",
+"Rellenar manualmente":"Bete eskuz","Escanear otro":"Eskaneatu beste bat","Buscando datos del libro…":"Liburuaren datuak bilatzen…","Ejemplares añadidos al libro existente.":"Aleak lehendik zegoen liburuari gehitu zaizkio.",
+"Apunta al código de barras del libro (el del ISBN, que empieza por 978 o 979). Sujétalo a unos 20-30 cm, con buena luz y sin reflejos.":"Zuzendu kamera liburuaren barra-kodera (ISBNarena, 978 edo 979 zenbakiekin hasten dena). Eduki 20-30 cm-ra, argi onarekin eta islarik gabe.",
+"Abriendo cámara…":"Kamera irekitzen…","¿No lo detecta? Escribe el ISBN":"Ez du detektatzen? Idatzi ISBNa","¿No lo detecta? Escribe el código del alumno":"Ez du detektatzen? Idatzi ikaslearen kodea","Continuar":"Jarraitu",
+"Buscando código de barras…":"Barra-kodea bilatzen…","Buscando código QR…":"QR kodea bilatzen…","No se pudo abrir la cámara. Revisa los permisos del navegador o escribe el código abajo.":"Ezin izan da kamera ireki. Begiratu nabigatzailearen baimenak edo idatzi kodea behean.",
+"Cargando alumnado…":"Ikasleak kargatzen…","Crear alumnos":"Sortu ikasleak","Recuperar alumnos":"Berreskuratu ikasleak","Imprimir":"Inprimatu","Buscar código":"Bilatu kodea","Código":"Kodea",
+"Todavía no hay alumnos.":"Oraindik ez dago ikaslerik.","Eliminar alumno":"Ezabatu ikaslea","¿Cuántos alumnos quieres crear?":"Zenbat ikasle sortu nahi dituzu?","Alumno creado.":"Ikaslea sortu da.",
+"No hay alumnos para imprimir":"Ez dago inprimatzeko ikaslerik","Alumnos eliminados":"Ezabatutako ikasleak","Eliminado el":"Ezabatze-data","Recuperar":"Berreskuratu","No hay alumnos eliminados.":"Ez dago ezabatutako ikaslerik.",
+"Prestar":"Maileguan eman","Devolver":"Itzuli","Prestar libro":"Liburua maileguan eman","Devolver libro":"Liburua itzuli",
+"Escanear ISBN del libro":"Eskaneatu liburuaren ISBNa","Confirmar libro":"Berretsi liburua","Escanear QR del alumno":"Eskaneatu ikaslearen QRa","Préstamo confirmado":"Mailegua berretsita","Devolución confirmada":"Itzulketa berretsita",
+"Escanea el ISBN del libro: el código de barras de la contraportada.":"Eskaneatu liburuaren ISBNa: atzeko azaleko barra-kodea.","Escanea el QR del alumno: el cuadrado de su tarjeta.":"Eskaneatu ikaslearen QRa: bere txartelaren karratua.",
+"Buscando el libro…":"Liburua bilatzen…","Incorporarlo a la biblioteca":"Gehitu liburutegira","¿Es este el libro que quieres prestar?":"Hau al da maileguan eman nahi duzun liburua?","¿Es este el libro que quieres devolver?":"Hau al da itzuli nahi duzun liburua?",
+"Sí":"Bai","Registrando…":"Erregistratzen…","Prestar otro libro":"Eman beste liburu bat maileguan","Devolver otro libro":"Itzuli beste liburu bat","Escanear otro alumno":"Eskaneatu beste ikasle bat","Volver":"Atzera",
+"No quedan ejemplares disponibles":"Ez dago alerik eskuragarri","Ese préstamo ya no está activo":"Mailegu hori ez dago aktibo","El préstamo ya no está activo":"Mailegua ez dago aktibo","No se pudo registrar":"Ezin izan da erregistratu",
+"Cargando historial…":"Historiala kargatzen…","Libros fuera de centro":"Ikastetxetik kanpo dauden liburuak","Exportar historial a Excel":"Esportatu historiala Excelera","Buscar por libro, alumno o ISBN":"Bilatu liburua, ikaslea edo ISBN bidez",
+"Libro":"Liburua","Alumno":"Ikaslea","Préstamo":"Mailegua","Devolución":"Itzulketa","Estado":"Egoera","Retrasado":"Berandu","Prestado":"Maileguan","Devuelto":"Itzulita","Perdido":"Galduta",
+"Todavía no hay préstamos registrados.":"Oraindik ez dago maileguik erregistratuta.","Buscar por alumno o libro":"Bilatu ikaslea edo liburua","Fecha límite":"Epemuga","Libro perdido":"Liburu galdua",
+"Marcar como libro perdido y cerrar el préstamo":"Markatu liburu galdu gisa eta itxi mailegua","No hay libros fuera del centro.":"Ez dago ikastetxetik kanpo libururik.","Préstamo cerrado":"Mailegua itxi da",
+"Biblioteca":"Liburutegia","Prestados":"Maileguan","Ejemplar":"Alea","Fecha de préstamo":"Mailegu-data","Devolución / cierre":"Itzulketa / itxiera"
+};
+const EU_RE = [
+  [/^Hay (\d+) solicitud(?:es)? nuevas? para unirse a «(.*)»\.$/, (n, c) => n === "1" ? `«${c}» ikastetxean sartzeko eskaera berri bat dago.` : `«${c}» ikastetxean sartzeko ${n} eskaera berri daude.`],
+  [/^Hay (\d+) nuevas? solicitud(?:es)? para unirse a tu centro\.$/, n => n === "1" ? "Zure ikastetxean sartzeko eskaera berri bat dago." : `Zure ikastetxean sartzeko ${n} eskaera berri daude.`],
+  [/^Código: (.*) · (.*)$/, (c, e) => `Kodea: ${c} · ${e}`],
+  [/^Página (\d+) de (\d+)$/, (a, b) => `${a}. orrialdea (${b} guztira)`],
+  [/^Disponibles: (\d+) \/ (\d+)$/, (a, b) => `Eskuragarri: ${a} / ${b}`],
+  [/^Eliminar «(.*)»$/, c => `«${c}» ezabatu`],
+  [/^No he encontrado datos para el ISBN (\d+)\.$/, i => `Ez dut daturik aurkitu ${i} ISBNrako.`],
+  [/^El libro con ISBN (\d+) no está en la biblioteca de este centro\.$/, i => `${i} ISBN duen liburua ez dago ikastetxe honen liburutegian.`],
+  [/^Este libro ya está en tu biblioteca \((\d+) ejemplares?\)\. Si aceptas, se sumarán los ejemplares indicados\.$/, n => `Liburu hau dagoeneko zure liburutegian dago (${n} ale). Onartzen baduzu, adierazitako aleak gehituko dira.`],
+  [/^No quedan ejemplares disponibles de «(.*)»\.$/, t => `Ez dago alerik eskuragarri «${t}» liburuarenak.`],
+  [/^El código «(.*)» no corresponde a ningún alumno$/, c => `«${c}» kodea ez dator ikasle batekin bat`],
+  [/^Se ha registrado el préstamo del libro «(.*)» al alumno (\S+)\. Fecha límite de devolución: (.*)\.$/, (t, a, d) => `«${t}» liburuaren mailegua erregistratu da ${a} ikaslearentzat. Itzultzeko epemuga: ${d}.`],
+  [/^Se ha registrado la devolución del libro «(.*)» del alumno (\S+)\.$/, (t, a) => `«${t}» liburuaren itzulketa erregistratu da (${a} ikaslea).`],
+  [/^El alumno (\S+) no tiene prestado «(.*)»\.$/, (a, t) => `${a} ikasleak ez du «${t}» maileguan.`],
+  [/^(\d+) alumnos creados\.$/, n => `${n} ikasle sortu dira.`],
+  [/^(\S+) recuperado$/, c => `${c} berreskuratu da`],
+  [/^¿Eliminar «(.*)» de la biblioteca\?$/, t => `«${t}» liburutegitik ezabatu nahi duzu?`],
+  [/^¿Quitar a (\S+) de la lista\? Podrás recuperarlo después con «Recuperar alumnos»\.$/, c => `${c} zerrendatik kendu nahi duzu? Gero «Berreskuratu ikasleak» aukerarekin berreskuratu ahal izango duzu.`],
+  [/^¿Cerrar el préstamo de «(.*)» al alumno (\S+) sin que se haya devuelto\?\n\nSe dará el libro por perdido y se descontará un ejemplar de la biblioteca\.$/, (t, a) => `«${t}» liburuaren mailegua itxi nahi duzu ${a} ikaslearentzat itzuli gabe?\n\nLiburua galdutzat joko da eta liburutegitik ale bat kenduko da.`],
+  [/^Te hemos enviado un correo a (.*)\. Abre el mensaje y pulsa el enlace para confirmar tu cuenta\. Después vuelve aquí\.$/, e => `${e} helbidera mezu bat bidali dizugu. Ireki mezua eta sakatu esteka zure kontua berresteko. Gero, itzuli hona.`]
+];
+const trs = s => {   // castellano → euskara (si no hay traducción, se deja igual)
+  if(lang !== "eus" || !s) return s;
+  const k = s.trim(); if(!k) return s;
+  let pre = "", core = k;
+  if(core.startsWith("✅ ")){ pre = "✅ "; core = core.slice(2); }
+  let r = EU[core];
+  if(r === undefined) for(const [re, f] of EU_RE){ const m = core.match(re); if(m){ r = f(...m.slice(1)); break; } }
+  if(r === undefined){
+    const m = core.match(/^(.*?) \((\d+|tú)\)$/);
+    if(m && EU[m[1]] !== undefined) r = EU[m[1]] + " (" + (m[2] === "tú" ? "zu" : m[2]) + ")";
+    else if(m && m[2] === "tú") r = m[1] + " (zu)";
+  }
+  return r === undefined ? s : s.replace(k, () => pre + r);
+};
+const trKeys = r => Object.fromEntries(Object.entries(r).map(([k, v]) => [trs(k), v]));
+const _confirm = window.confirm.bind(window), _prompt = window.prompt.bind(window);
+window.confirm = m => _confirm(trs(m)); window.prompt = (m, d) => _prompt(trs(m), d);
+
+const txtMap = new WeakMap(), attrMap = new WeakMap(), TR_ATTRS = ["placeholder", "aria-label", "title", "alt"];
+const walker = () => document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: n => /^(SCRIPT|STYLE)$/.test(n.parentNode.nodeName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+function trAll(){
+  const w = walker();
+  for(let n; (n = w.nextNode());){
+    const e = txtMap.get(n), src = e && n.nodeValue === e.t ? e.o : n.nodeValue, out = trs(src);
+    if(out !== n.nodeValue){ txtMap.set(n, { o: src, t: out }); n.nodeValue = out; }
+  }
+  document.querySelectorAll("[placeholder],[aria-label],[title],[alt]").forEach(el => TR_ATTRS.forEach(a => {
+    const v = el.getAttribute(a); if(v === null) return;
+    const m = attrMap.get(el) || {}, e = m[a], src = e && v === e.t ? e.o : v, out = trs(src);
+    if(out !== v){ m[a] = { o: src, t: out }; attrMap.set(el, m); el.setAttribute(a, out); }
+  }));
+}
+function trRestore(){
+  const w = walker();
+  for(let n; (n = w.nextNode());){ const e = txtMap.get(n); if(e && n.nodeValue === e.t) n.nodeValue = e.o; }
+  document.querySelectorAll("[placeholder],[aria-label],[title],[alt]").forEach(el => TR_ATTRS.forEach(a => {
+    const e = (attrMap.get(el) || {})[a]; if(e && el.getAttribute(a) === e.t) el.setAttribute(a, e.o);
+  }));
+}
+let trPending = false;
+const OBS_OPTS = { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: TR_ATTRS };
+const trObs = new MutationObserver(() => {
+  if(trPending) return; trPending = true;
+  requestAnimationFrame(() => { trPending = false; if(lang !== "eus") return; trObs.disconnect(); trAll(); trObs.observe(document.body, OBS_OPTS); });
+});
+function setLang(l){
+  lang = l; localStorage.setItem("lang", l);
+  document.documentElement.lang = l === "eus" ? "eu" : "es";
+  const b = document.getElementById("lang"); b.textContent = l === "eus" ? "ES" : "EUS";
+  b.setAttribute("aria-label", l === "eus" ? "Cambiar a castellano" : "Cambiar a euskera");
+  trObs.disconnect();
+  if(l === "eus"){ trAll(); trObs.observe(document.body, OBS_OPTS); } else trRestore();
+}
+setLang(lang);
 </script>
 </body>
 </html>
