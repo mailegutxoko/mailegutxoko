@@ -64,7 +64,6 @@ th{color:var(--muted)}
 .bookbox p{margin:2px 0}
 @media(max-width:640px){th,td{padding:10px 8px}}
 .isbnform{margin-top:12px}
-.late{color:var(--red);font-weight:600}
 .bar{flex-wrap:wrap}
 .bar h2{min-width:0;overflow-wrap:anywhere}
 .row .info{overflow-wrap:anywhere}
@@ -90,9 +89,146 @@ th .arr{color:var(--blue-d)}
 .scanhint.qr{background:#fef7e0;color:#8a5a00}
 .scanhint .ico{font-size:1.8rem}
 #lang{font-weight:700;border:1px solid var(--line);background:#fff;margin-left:8px}
+.camBox::after{content:"";position:absolute;pointer-events:none;border:3px solid rgba(255,255,255,.9);border-radius:10px;box-shadow:0 0 0 999px rgba(0,0,0,.28)}
+.camBox.isbn::after{top:30%;bottom:30%;left:5%;right:5%}
+.camBox.qr::after{top:12%;height:76%;aspect-ratio:1;left:50%;transform:translateX(-50%)}
 #msg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#202124;color:#fff;padding:10px 18px;border-radius:8px;display:none;max-width:90vw}
 #msg.err{background:var(--red)}
 </style>
+
+<style id="mailegutxoko-modern-theme">
+/* Mailegutxoko · renovación visual minimalista */
+:root{
+  --bg:#f5f7f8;--card:#fff;--ink:#172b3a;--muted:#687985;
+  --blue:#176b68;--blue-d:#105653;--line:#e3e9eb;
+  --red:#b54745;--green:#247a59;
+  --accent-soft:#e8f3f1;--shadow:0 8px 24px rgba(25,48,58,.055);
+}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  line-height:1.5;-webkit-font-smoothing:antialiased;
+}
+main{max-width:1180px;margin:0 auto;padding:24px 28px 72px}
+header.top{
+  text-align:left;margin:12px 0 30px;padding:24px 28px;
+  background:linear-gradient(115deg,#fff 0%,#f4faf9 100%);
+  border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);
+  position:relative;overflow:hidden;
+}
+header.top:after{
+  content:"";position:absolute;width:190px;height:190px;border-radius:50%;
+  right:-55px;top:-95px;background:rgba(23,107,104,.07);pointer-events:none;
+}
+header.top h1{font-size:clamp(1.8rem,3vw,2.35rem);letter-spacing:-.055em;font-weight:750;color:#163c43}
+header.top p{margin:5px 0 0 2px;color:var(--muted);font-size:.98rem}
+.user{min-height:34px;gap:10px;font-size:.84rem;color:var(--muted);padding:0 4px}
+#lang{border-radius:999px;padding:7px 13px;font-size:.78rem;letter-spacing:.04em}
+button{
+  border-radius:10px;padding:11px 17px;background:var(--blue);font-weight:650;
+  box-shadow:0 2px 5px rgba(23,107,104,.12);transition:background .18s,transform .18s,box-shadow .18s;
+}
+button:hover{background:var(--blue-d);transform:translateY(-1px);box-shadow:0 5px 12px rgba(23,107,104,.14)}
+button:active{transform:translateY(0)}
+button:focus-visible,input:focus-visible{outline:3px solid rgba(23,107,104,.25);outline-offset:2px}
+button.ghost{background:transparent;color:var(--blue);box-shadow:none}
+button.ghost:hover{background:var(--accent-soft);box-shadow:none}
+button.danger{background:#b54745;box-shadow:none}
+button.danger:hover{background:#963b39}
+button.small{padding:7px 11px;font-size:.84rem;border-radius:8px}
+.panel{
+  background:var(--card);border:1px solid var(--line);border-radius:16px;
+  padding:22px;margin-bottom:18px;box-shadow:var(--shadow);
+}
+.panel h3{font-size:1.02rem;font-weight:700;letter-spacing:-.015em;margin:0 0 15px;color:#233e49}
+form{gap:15px}
+label{font-size:.84rem;font-weight:600;color:#526571;gap:7px}
+input{
+  padding:12px 13px;border:1px solid #d9e2e5;border-radius:9px;background:#fff;
+  transition:border-color .15s,box-shadow .15s;
+}
+input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(23,107,104,.09);outline:0}
+input::placeholder{color:#9aa8ae}
+.row{padding:14px 4px;border-bottom:1px solid #edf1f2;gap:14px}
+.row strong{font-weight:650;color:#243d48}
+.row small{margin-top:3px;color:var(--muted)}
+.tag{padding:4px 9px;border-radius:999px;font-size:.75rem;font-weight:650;background:#e7f3ed;color:#247a59}
+.tag.wait{background:#fff4dc;color:#93610b}
+.tag.off{background:#fcebea;color:#ad4441}
+.empty{color:#87969e;padding:12px 0}
+.menu{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin:20px 0}
+.menu button{
+  min-height:86px;text-align:left;display:flex;align-items:center;justify-content:flex-start;
+  padding:18px 20px;background:#fff;color:#24414b;border:1px solid var(--line);
+  box-shadow:var(--shadow);font-size:.98rem;position:relative;
+}
+.menu button:before{
+  content:"";width:34px;height:34px;flex:0 0 34px;margin-right:12px;border-radius:10px;
+  background:var(--accent-soft);
+}
+.menu button:after{content:"↗";margin-left:auto;color:#7c9998;font-size:1rem}
+.menu button:hover{background:#fbfefd;border-color:#b9d5d1;color:var(--blue-d)}
+.menu button:nth-child(1):before{background:#e6f2f1}
+.menu button:nth-child(2):before{background:#edf1fa}
+.menu button:nth-child(3):before{background:#fdf1e5}
+.menu button:nth-child(4):before{background:#f1ecf8}
+.menu button:nth-child(5):before{background:#edf3e8}
+.sname{
+  text-align:left;font-size:1.18rem;font-weight:750;letter-spacing:-.02em;
+  margin:8px 0 4px;padding:17px 20px;background:#fff;border:1px solid var(--line);
+  border-radius:14px;color:#23434b;box-shadow:var(--shadow);
+}
+.sname .tag{margin-left:7px;vertical-align:middle}
+.bar{gap:14px;margin:8px 0 20px}
+.bar h2{font-size:1.45rem;letter-spacing:-.04em;font-weight:750;color:#203c47}
+.banner{
+  background:#edf6f4;border:1px solid #d0e6e2;color:#245d59;
+  border-radius:12px;padding:13px 16px;margin-bottom:16px;
+}
+.banner.err{background:#fff0ef;border-color:#f2d0ce;color:#a33f3c}
+.tools{gap:9px;margin-bottom:16px}
+.tablewrap{border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+table{background:#fff}
+th,td{padding:13px 14px;border-bottom:1px solid #edf1f2;font-size:.9rem}
+th{background:#f8fafb;color:#657780;font-size:.78rem;font-weight:700;letter-spacing:.025em}
+tbody tr:hover{background:#f9fcfb}
+th.sortable:hover{background:#eef5f4}
+.pager{gap:14px;margin:16px 0}
+.overlay{background:rgba(19,38,46,.48);backdrop-filter:blur(4px)}
+.dialog{border:1px solid var(--line);border-radius:18px;padding:26px;box-shadow:0 24px 70px rgba(15,35,42,.2)}
+.dialog h3{font-size:1.15rem;letter-spacing:-.025em}
+.x{border-radius:8px;box-shadow:none}
+.bookbox{padding:12px;background:#f8fafb;border:1px solid var(--line);border-radius:12px}
+.bookbox img{border-radius:7px;box-shadow:0 3px 10px rgba(0,0,0,.1)}
+.steps li b{font-weight:700}
+.steps li.done b{background:var(--green)}
+.steps li.cur b{background:var(--blue);box-shadow:0 0 0 4px #dcecea}
+.steps li.done::before,.steps li.cur::before{background:var(--green)}
+.scanhint{border-radius:12px;background:#eaf4f2;color:#205c58}
+.scanhint.qr{background:#fff5e3;color:#875b15}
+#msg{border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.18);font-weight:600}
+#msg.err{background:#a83f3d}
+#tip{border-radius:8px;box-shadow:0 5px 20px rgba(0,0,0,.2)}
+@media(max-width:700px){
+  main{padding:14px 14px 48px}
+  header.top{padding:20px;margin:8px 0 22px;border-radius:15px}
+  .panel{padding:17px;border-radius:13px}
+  .menu{grid-template-columns:1fr 1fr;gap:10px}
+  .menu button{min-height:76px;padding:13px 12px;font-size:.88rem}
+  .menu button:before{width:28px;height:28px;flex-basis:28px;margin-right:8px}
+}
+@media(max-width:430px){
+  .menu{grid-template-columns:1fr}
+  .menu button{min-height:62px}
+  .user{justify-content:flex-start}
+  .acts{justify-content:flex-start}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*:before,*:after{scroll-behavior:auto!important;transition:none!important}
+}
+</style>
+
 </head>
 <body>
 <main>
@@ -128,7 +264,7 @@ th .arr{color:var(--blue-d)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
 <script>
 const SUPER_EMAIL = "j.borrego@irakasle.eus";
@@ -486,15 +622,15 @@ async function renderBooks(){
   try{ booksCache = (await db.collection(`schools/${cur.sid}/books`).get()).docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.title || "").localeCompare(b.title || "")); }catch(e){ fail(e); }
   $app.innerHTML = fl + backBar("Libros") +
     (cur.admin ? `<div class="tools"><button onclick="renderAddBook()">Incorporar libro</button><button onclick="exportBooks()">Exportar biblioteca a Excel</button></div>` : "") +
-    `<input class="search" placeholder="Buscar por título, autor o ISBN" value="${esc(bookQ)}" oninput="bookQ=this.value;bookPage=0;drawBooks()"><div id="tbl"></div>`;
+    `<input class="search" placeholder="Buscar por título, autor, género o ISBN" value="${esc(bookQ)}" oninput="bookQ=this.value;bookPage=0;drawBooks()"><div id="tbl"></div>`;
   drawBooks();
 }
 function drawBooks(){
-  const q = bookQ.toLowerCase(), list = sorted(booksCache.filter(b => `${b.title} ${b.author} ${b.isbn || b.id}`.toLowerCase().includes(q)), "books", gBook);
+  const q = bookQ.toLowerCase(), list = sorted(booksCache.filter(b => `${b.title} ${b.author} ${b.genre || ""} ${b.age || ""} ${b.isbn || b.id}`.toLowerCase().includes(q)), "books", gBook);
   const pages = Math.max(1, Math.ceil(list.length / BOOKS_PER_PAGE)); bookPage = Math.min(bookPage, pages - 1);
   const rows = list.slice(bookPage * BOOKS_PER_PAGE, (bookPage + 1) * BOOKS_PER_PAGE), pg = PAGER("setBookPage", bookPage, pages);
-  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr>${sth("books", "title", "Título")}${sth("books", "author", "Autor")}${sth("books", "publisher", "Editorial")}${sth("books", "isbn", "ISBN")}${sth("books", "avail", "Disponibles")}${cur.admin ? "<th></th>" : ""}</tr></thead><tbody>` +
-    rows.map(b => `<tr><td><div class="ell">${esc(b.title)}</div></td><td><div class="ell s">${esc(b.author)}</div></td><td><div class="ell s">${esc(b.publisher)}</div></td><td>${esc(b.isbn || b.id)}</td>
+  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr>${sth("books", "title", "Título")}${sth("books", "author", "Autor")}${sth("books", "publisher", "Editorial")}${sth("books", "genre", "Género")}${sth("books", "age", "Edad")}${sth("books", "isbn", "ISBN")}${sth("books", "avail", "Disponibles")}${cur.admin ? "<th></th>" : ""}</tr></thead><tbody>` +
+    rows.map(b => `<tr><td><div class="ell">${esc(b.title)}</div></td><td><div class="ell s">${esc(b.author)}</div></td><td><div class="ell s">${esc(b.publisher)}</div></td><td><div class="ell s">${esc(b.genre) || "—"}</div></td><td>${esc(b.age) || "—"}</td><td>${esc(b.isbn || b.id)}</td>
       <td><span class="tag ${b.availableCopies > 0 ? "" : "off"}">${b.availableCopies ?? 0} / ${b.totalCopies ?? 0}</span></td>
       ${cur.admin ? `<td><div class="acts" style="flex-wrap:nowrap"><button class="small" aria-label="Editar libro" onclick="editBook('${esc(b.id)}')">${PENCIL}</button><button class="small danger" aria-label="Eliminar libro" onclick="deleteBook('${esc(b.id)}')">🗑</button></div></td>` : ""}</tr>`).join("") +
     `</tbody></table>${rows.length ? "" : `<div class="empty" style="padding:16px">${booksCache.length ? "Ningún libro coincide con la búsqueda." : "Todavía no hay libros."}</div>`}</div>` + pg;
@@ -507,11 +643,12 @@ function editBook(id){
   const used = b.activeLoans || 0, { o, close } = modal(`<h3>Editar libro</h3><form><label>ISBN<input value="${esc(b.isbn || b.id)}" disabled></label>
     <label>Título<input name="title" required value="${esc(b.title)}"></label><label>Autor<input name="author" required value="${esc(b.author)}"></label>
     <label>Editorial<input name="publisher" value="${esc(b.publisher)}"></label>
+    <label>Género<input name="genre" value="${esc(b.genre)}"></label><label>Edad recomendada<input name="age" value="${esc(b.age)}" placeholder="Ej.: 6-8"></label>
     <label>Ejemplares totales<input name="total" type="number" min="${Math.max(1, used)}" required value="${b.totalCopies ?? 1}"></label><button>Guardar cambios</button></form>`);
   o.querySelector("form").onsubmit = async e => {
     e.preventDefault(); const f = e.target, t = parseInt(f.total.value, 10);
     try{
-      await db.doc(`schools/${cur.sid}/books/${id}`).update({ title: f.title.value.trim(), author: f.author.value.trim(), publisher: f.publisher.value.trim(), totalCopies: t, availableCopies: t - used, available: t - used > 0 });
+      await db.doc(`schools/${cur.sid}/books/${id}`).update({ title: f.title.value.trim(), author: f.author.value.trim(), publisher: f.publisher.value.trim(), genre: f.genre.value.trim(), age: f.age.value.trim(), totalCopies: t, availableCopies: t - used, available: t - used > 0 });
       close(); note("Libro actualizado."); renderBooks();
     }catch(err){ fail(err); }
   };
@@ -523,7 +660,7 @@ async function deleteBook(id){
   try{ await db.doc(`schools/${cur.sid}/books/${id}`).delete(); note("Libro eliminado."); renderBooks(); }catch(e){ fail(e); }
 }
 function exportBooks(){
-  const rows = booksCache.map(b => ({ ISBN: b.isbn || b.id, "Título": b.title, Autor: b.author, Editorial: b.publisher, "Ejemplares totales": b.totalCopies, "Disponibles": b.availableCopies, "Prestados": b.activeLoans || 0 }));
+  const rows = booksCache.map(b => ({ ISBN: b.isbn || b.id, "Título": b.title, Autor: b.author, Editorial: b.publisher, "Género": b.genre || "", "Edad": b.age || "", "Ejemplares totales": b.totalCopies, "Disponibles": b.availableCopies, "Prestados": b.activeLoans || 0 }));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(trKeys)), trs("Biblioteca"));
   XLSX.writeFile(wb, `biblioteca-${cur.name}.xlsx`);
 }
@@ -547,6 +684,7 @@ function renderManual(isbn = ""){
   stopScanner();
   $app.innerHTML = addBar("Añadir manualmente") + `<div class="panel"><form onsubmit="addBook(event)"><label>ISBN<input name="isbn" required value="${esc(isbn)}"></label>
     <label>Título<input name="title" required></label><label>Autor<input name="author" required></label><label>Editorial<input name="publisher"></label>
+    <label>Género<input name="genre" required></label><label>Edad recomendada<input name="age" required placeholder="Ej.: 6-8"></label>
     <label>Ejemplares<input name="copies" type="number" min="1" value="1" required></label><button>Guardar libro</button></form></div>`;
 }
 async function addBook(e){
@@ -555,7 +693,7 @@ async function addBook(e){
   try{
     const ref = db.doc(`schools/${cur.sid}/books/${isbn}`);
     if((await ref.get()).exists) return toast("Ya existe un libro con ese ISBN", true);
-    await ref.set({ isbn, title: f.title.value.trim(), author: f.author.value.trim(), publisher: f.publisher.value.trim(), totalCopies: n, availableCopies: n, activeLoans: 0, available: true, createdAt: FV.serverTimestamp() });
+    await ref.set({ isbn, title: f.title.value.trim(), author: f.author.value.trim(), publisher: f.publisher.value.trim(), genre: f.genre.value.trim(), age: f.age.value.trim(), totalCopies: n, availableCopies: n, activeLoans: 0, available: true, createdAt: FV.serverTimestamp() });
     note("Libro incorporado a la biblioteca."); renderBooks();
   }catch(err){ fail(err); }
 }
@@ -565,33 +703,57 @@ function toIsbn13(x){ // acepta ISBN-10 o ISBN-13 y devuelve siempre ISBN-13
   return x;
 }
 function renderScan(){
-  scanScreen("Añadir con escáner", "Apunta al código de barras del libro (el del ISBN, que empieza por 978 o 979). Sujétalo a unos 20-30 cm, con buena luz y sin reflejos.", "isbn", onIsbn, "renderAddBook()", "¿No lo detecta? Escribe el ISBN");
+  scanScreen("Añadir con escáner", "Apunta al código de barras del libro (el del ISBN, que empieza por 978 o 979). Acércalo hasta que llene el recuadro, con buena luz y sin reflejos.", "isbn", onIsbn, "renderAddBook()", "¿No lo detecta? Escribe el ISBN");
 }
 async function startScan(kind, cb){
   const token = ++scanToken, video = document.getElementById("cam"), status = document.getElementById("scanStatus");
   const say = t => { if(token === scanToken && status) status.textContent = t; };
   const qr = kind === "qr", fmt = qr ? "qr_code" : "ean_13";
+  const wait = qr ? "Buscando código QR… Coloca el QR dentro del recuadro." : "Buscando código de barras… Acerca el libro hasta que el código llene el recuadro.";
+  const openCam = async (w, h) => {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: w }, height: { ideal: h } } });
+    if(token !== scanToken){ stream.getTracks().forEach(t => t.stop()); return false; }
+    camStream = stream; video.srcObject = stream; await video.play(); return true;
+  };
   try{
-    let native = false;   // lector nativo del navegador (Chrome en Android, Mac…): el más fiable
+    let native = false;   // lector nativo del navegador (Chrome en Android y Mac): el más rápido
     if("BarcodeDetector" in window){ try{ native = (await BarcodeDetector.getSupportedFormats()).includes(fmt); }catch(e){} }
     if(native){
       const det = new BarcodeDetector({ formats: [fmt] });
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } });
-      if(token !== scanToken){ stream.getTracks().forEach(t => t.stop()); return; }
-      camStream = stream; video.srcObject = stream; await video.play(); say(qr ? "Buscando código QR…" : "Buscando código de barras…");
+      if(!(await openCam(1280, 720))) return;
+      say(wait);
       const loop = async () => {
         if(token !== scanToken) return;
         try{ const r = await det.detect(video); if(r.length) cb(r[0].rawValue); }catch(e){}
-        if(token === scanToken) setTimeout(loop, qr ? 400 : 120);
+        if(token === scanToken) setTimeout(loop, qr ? 200 : 100);
       };
       loop();
-    }else if(!qr && typeof Quagga !== "undefined"){   // iPhone/Safari y Windows: Quagga, pensado para códigos de barras 1D
+    }else if(qr){   // iPhone y Windows: jsQR sobre fotogramas reducidos (rápido y fiable)
+      if(typeof jsQR === "undefined") throw new Error("No se cargó el lector de QR");
+      if(!(await openCam(1280, 720))) return;
+      say(wait);
+      const cv = document.createElement("canvas"), ctx = cv.getContext("2d", { willReadFrequently: true });
+      const tick = () => {
+        if(token !== scanToken) return;
+        if(video.readyState >= 2 && video.videoWidth){
+          const k = Math.min(1, 800 / video.videoWidth);
+          cv.width = Math.round(video.videoWidth * k); cv.height = Math.round(video.videoHeight * k);
+          ctx.drawImage(video, 0, 0, cv.width, cv.height);
+          const img = ctx.getImageData(0, 0, cv.width, cv.height), r = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+          if(r && r.data) cb(r.data);
+        }
+        setTimeout(tick, 70);
+      };
+      tick();
+    }else{   // códigos de barras sin lector nativo (iPhone, Windows): Quagga
+      if(typeof Quagga === "undefined") throw new Error("No se cargó el lector de códigos de barras");
       video.remove();   // Quagga crea su propio <video> dentro de #camBox
-      await new Promise((ok, ko) => Quagga.init({
-        inputStream: { type: "LiveStream", target: document.getElementById("camBox"), constraints: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } },
-        locator: { patchSize: "medium", halfSample: false }, numOfWorkers: 0, frequency: 10, locate: true,
+      const init = workers => new Promise((ok, ko) => Quagga.init({
+        inputStream: { type: "LiveStream", target: document.getElementById("camBox"), constraints: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, area: { top: "30%", right: "5%", left: "5%", bottom: "30%" } },
+        locator: { patchSize: "medium", halfSample: true }, numOfWorkers: workers, frequency: 10, locate: true,
         decoder: { readers: ["ean_reader"] }
       }, err => err ? ko(err) : ok()));
+      try{ await init(Math.min(2, navigator.hardwareConcurrency || 2)); }catch(e){ await init(0); }   // con hilos de trabajo; si falla, sin ellos
       if(token !== scanToken){ try{ Quagga.stop(); }catch(e){} return; }
       let last = "", hits = 0;   // se exige leer el mismo código dos veces seguidas para evitar lecturas erróneas
       quaggaFn = r => {
@@ -601,13 +763,7 @@ async function startScan(kind, cb){
         if(hits >= 2 && /^97[89]\d{10}$/.test(c)) cb(c);
       };
       Quagga.onDetected(quaggaFn); Quagga.start(); quaggaOn = true;
-      say("Buscando código de barras…");
-    }else{   // respaldo: lector ZXing (códigos QR, Firefox…)
-      if(typeof ZXing === "undefined") throw new Error("No se cargó la librería de lectura");
-      const hints = new Map([[ZXing.DecodeHintType.POSSIBLE_FORMATS, [qr ? ZXing.BarcodeFormat.QR_CODE : ZXing.BarcodeFormat.EAN_13]], [ZXing.DecodeHintType.TRY_HARDER, true]]);
-      const reader = new ZXing.BrowserMultiFormatReader(hints, 200); zxReader = reader;
-      await reader.decodeFromConstraints({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } }, video, res => { if(res && token === scanToken) cb(res.getText()); });
-      say(qr ? "Buscando código QR…" : "Buscando código de barras…");
+      say(wait);
     }
   }catch(e){ console.error(e); say("No se pudo abrir la cámara. Revisa los permisos del navegador o escribe el código abajo."); }
 }
@@ -642,7 +798,7 @@ async function onIsbn(code){
   $app.innerHTML = addBar("Añadir con escáner") + `<div class="panel"><h3>¿Es este el libro que quieres añadir?</h3>
     <div class="bookbox">${info.cover ? `<img src="${esc(info.cover)}" alt="Portada">` : ""}<div><p><strong>${esc(info.title)}</strong></p><p>${esc(info.author) || "Autor desconocido"}</p><p>${esc(info.publisher)}</p><p>ISBN ${esc(isbn)}</p></div></div>
     ${exists ? `<p class="empty">Este libro ya está en tu biblioteca (${total} ejemplar${total === 1 ? "" : "es"}). Si aceptas, se sumarán los ejemplares indicados.</p>` : ""}
-    <form onsubmit="saveScanned(event)"><label>Ejemplares a añadir<input name="copies" type="number" min="1" value="1" required></label>
+    <form onsubmit="saveScanned(event)">${exists ? "" : `<label>Género<input name="genre" required></label><label>Edad recomendada<input name="age" required placeholder="Ej.: 6-8"></label>`}<label>Ejemplares a añadir<input name="copies" type="number" min="1" value="1" required></label>
     <div class="tools"><button>Sí, añadir</button><button type="button" class="ghost" onclick="renderScan()">No, escanear otro</button></div></form></div>`;
 }
 async function saveScanned(e){
@@ -650,7 +806,7 @@ async function saveScanned(e){
   const { isbn, info, exists } = scanned, n = parseInt(e.target.copies.value, 10), ref = db.doc(`schools/${cur.sid}/books/${isbn}`);
   try{
     if(exists) await ref.update({ totalCopies: FV.increment(n), availableCopies: FV.increment(n), available: true });
-    else await ref.set({ isbn, title: info.title, author: info.author, publisher: info.publisher, totalCopies: n, availableCopies: n, activeLoans: 0, available: true, createdAt: FV.serverTimestamp() });
+    else await ref.set({ isbn, title: info.title, author: info.author, publisher: info.publisher, genre: e.target.genre.value.trim(), age: e.target.age.value.trim(), totalCopies: n, availableCopies: n, activeLoans: 0, available: true, createdAt: FV.serverTimestamp() });
     note(exists ? "Ejemplares añadidos al libro existente." : "Libro incorporado a la biblioteca."); renderBooks();
   }catch(err){ fail(err); }
 }
@@ -761,7 +917,6 @@ function editSchool(sid){
 }
 
 // ---------- Préstamos / devoluciones ----------
-const LOAN_DAYS = 15;   // plazo de devolución por defecto
 let loanMode = "lend", loanBook = null;
 function renderLoans(){
   stopScanner();
@@ -772,7 +927,7 @@ function scanScreen(title, text, kind, cb, back, label, step){
   stopScanner(); scanDone = false; window._cb = cb;
   $app.innerHTML = `<div class="bar"><button class="ghost" onclick="${back}">← Volver</button><h2>${title}</h2></div>${step ? stepper(step) : ""}
     <div class="panel"><div class="scanhint ${kind === "qr" ? "qr" : ""}"><span class="ico">${kind === "qr" ? "👤" : "📖"}</span><span>${text}</span></div>
-    <div id="camBox" class="camBox"><video id="cam" playsinline muted autoplay></video></div>
+    <div id="camBox" class="camBox ${kind === "qr" ? "qr" : "isbn"}"><video id="cam" playsinline muted autoplay></video></div>
     <p class="empty" id="scanStatus">Abriendo cámara…</p>
     <form class="isbnform" onsubmit="event.preventDefault();window._cb(this.code.value)"><label>${label}<input name="code" required></label><button>Continuar</button></form></div>`;
   startScan(kind, cb);
@@ -824,6 +979,7 @@ async function offerAddAndLend(isbn){
     <div class="bookbox">${b.cover ? `<img src="${esc(b.cover)}" alt="Portada">` : ""}<div><p>ISBN ${esc(isbn)}</p><p class="empty">${info ? "Revisa los datos y corrígelos si hace falta." : "No he encontrado datos de este libro. Rellénalos tú."}</p></div></div>
     <form onsubmit="addAndContinue(event)"><label>Título<input name="title" required value="${esc(b.title)}"></label><label>Autor<input name="author" required value="${esc(b.author)}"></label>
     <label>Editorial<input name="publisher" value="${esc(b.publisher)}"></label>
+    <label>Género<input name="genre" required></label><label>Edad recomendada<input name="age" required placeholder="Ej.: 6-8"></label>
     <div class="tools"><button>Sí, incorporar y continuar</button><button type="button" class="ghost" onclick="loanIsbnScreen()">No, escanear otro</button></div></form></div>`;
 }
 async function addAndContinue(e){
@@ -831,7 +987,7 @@ async function addAndContinue(e){
   const f = e.target, isbn = pendingIsbn, ref = db.doc(`schools/${cur.sid}/books/${isbn}`);
   try{
     if(!(await ref.get()).exists)   // por si otra persona lo ha incorporado mientras tanto
-      await ref.set({ isbn, title: f.title.value.trim(), author: f.author.value.trim(), publisher: f.publisher.value.trim(), totalCopies: 1, availableCopies: 1, activeLoans: 0, available: true, createdAt: FV.serverTimestamp() });
+      await ref.set({ isbn, title: f.title.value.trim(), author: f.author.value.trim(), publisher: f.publisher.value.trim(), genre: f.genre.value.trim(), age: f.age.value.trim(), totalCopies: 1, availableCopies: 1, activeLoans: 0, available: true, createdAt: FV.serverTimestamp() });
     const d = await ref.get(); loanBook = { id: d.id, ...d.data() };
     toast("Libro incorporado a la biblioteca.");
     loanStudentScreen();   // sigue el préstamo: escanear el QR del alumno
@@ -862,15 +1018,14 @@ async function doLend(code){
   const b = loanBook, bookRef = db.doc(`schools/${cur.sid}/books/${b.id}`), loanRef = db.collection(`schools/${cur.sid}/loans`).doc();
   const used = new Set((await db.collection(`schools/${cur.sid}/loans`).where("isbn", "==", b.id).get()).docs.map(d => d.data()).filter(l => l.status === "active").map(l => l.copyNumber));
   let copy = 1; while(used.has(copy)) copy++;   // primer número de ejemplar libre
-  const due = new Date(Date.now() + LOAN_DAYS * 864e5);
   await db.runTransaction(async tx => {
     const bs = await tx.get(bookRef), bk = bs.data();
     if(!bs.exists || !(bk.availableCopies > 0)) throw new Error("No quedan ejemplares disponibles");
     const left = bk.availableCopies - 1;
     tx.update(bookRef, { availableCopies: left, activeLoans: (bk.activeLoans || 0) + 1, available: left > 0 });
-    tx.set(loanRef, { isbn: b.id, title: b.title || "", copyNumber: copy, studentCode: code, status: "active", loanDate: FV.serverTimestamp(), returnDate: firebase.firestore.Timestamp.fromDate(due), createdBy: me.uid });
+    tx.set(loanRef, { isbn: b.id, title: b.title || "", copyNumber: copy, studentCode: code, status: "active", loanDate: FV.serverTimestamp(), createdBy: me.uid });
   });
-  return `Se ha registrado el préstamo del libro «${b.title}» al alumno ${code}. Fecha límite de devolución: ${due.toLocaleDateString("es-ES")}.`;
+  return `Se ha registrado el préstamo del libro «${b.title}» al alumno ${code}.`;
 }
 async function doReturn(code){
   const b = loanBook, bookRef = db.doc(`schools/${cur.sid}/books/${b.id}`);
@@ -891,8 +1046,7 @@ const PAGE30 = 30;
 let histCache = [], histQ = "", histPage = 0, outList = [], outQ = "", outPage = 0;
 const dt = t => t && t.toDate ? t.toDate().toLocaleDateString("es-ES") : "—";
 const dtt = t => t && t.toDate ? t.toDate().toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" }) : "";
-const overdue = l => l.status === "active" && l.returnDate && l.returnDate.toDate() < new Date();
-const loanTag = l => overdue(l) ? ["off", "Retrasado"] : ({ active: ["wait", "Prestado"], returned: ["", "Devuelto"], lost: ["off", "Perdido"] }[l.status] || ["", l.status]);
+const loanTag = l => ({ active: ["wait", "Prestado"], returned: ["", "Devuelto"], lost: ["off", "Perdido"] }[l.status] || ["", l.status]);
 async function renderHistory(){
   const fl = flashHtml();
   $app.innerHTML = fl + loading("Cargando historial…");
@@ -911,7 +1065,7 @@ function drawHistory(){
 }
 function setHistPage(p){ histPage = p; drawHistory(); document.getElementById("tbl").scrollIntoView({ block: "start" }); }
 function exportHistory(){
-  const rows = histCache.map(l => ({ ISBN: l.isbn, "Título": l.title || "", Alumno: l.studentCode, Ejemplar: l.copyNumber, "Fecha de préstamo": dtt(l.loanDate), "Fecha límite": dt(l.returnDate), "Devolución / cierre": dtt(l.returnedAt || l.closedAt), Estado: trs(loanTag(l)[1]) }));
+  const rows = histCache.map(l => ({ ISBN: l.isbn, "Título": l.title || "", Alumno: l.studentCode, Ejemplar: l.copyNumber, "Fecha de préstamo": dtt(l.loanDate), "Devolución / cierre": dtt(l.returnedAt || l.closedAt), Estado: trs(loanTag(l)[1]) }));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(trKeys)), trs("Historial"));
   XLSX.writeFile(wb, `historial-${cur.name}.xlsx`);
 }
@@ -930,8 +1084,8 @@ function drawOut(){
   const q = outQ.toLowerCase(), list = sorted(outList.filter(l => `${l.title} ${l.studentCode} ${l.isbn}`.toLowerCase().includes(q)), "out", gLoan);
   const pages = Math.max(1, Math.ceil(list.length / PAGE30)); outPage = Math.min(outPage, pages - 1);
   const rows = list.slice(outPage * PAGE30, (outPage + 1) * PAGE30), pg = PAGER("setOutPage", outPage, pages);
-  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr>${sth("out", "studentCode", "Alumno")}${sth("out", "title", "Libro")}${sth("out", "loanDate", "Préstamo")}${sth("out", "returnDate", "Fecha límite")}${cur.admin ? "<th></th>" : ""}</tr></thead><tbody>` +
-    rows.map(l => `<tr><td><strong>${esc(l.studentCode)}</strong></td><td><div class="ell">${esc(l.title || l.isbn)}</div></td><td class="hm">${dt(l.loanDate)}</td><td class="${overdue(l) ? "late" : ""}">${dt(l.returnDate)}</td>
+  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr>${sth("out", "studentCode", "Alumno")}${sth("out", "title", "Libro")}${sth("out", "loanDate", "Préstamo")}${cur.admin ? "<th></th>" : ""}</tr></thead><tbody>` +
+    rows.map(l => `<tr><td><strong>${esc(l.studentCode)}</strong></td><td><div class="ell">${esc(l.title || l.isbn)}</div></td><td class="hm">${dt(l.loanDate)}</td>
       ${cur.admin ? `<td><button class="small danger" title="Marcar como libro perdido y cerrar el préstamo" aria-label="Libro perdido" onclick="closeLoan('${esc(l.id)}')">Libro perdido</button></td>` : ""}</tr>`).join("") +
     `</tbody></table>${rows.length ? "" : '<div class="empty" style="padding:16px">No hay libros fuera del centro.</div>'}</div>` + pg;
 }
@@ -988,7 +1142,7 @@ const sorted = (list, t, get) => { const st = sortState[t]; return [...list].sor
 const secs = t => (t && t.seconds) || 0;
 const gBook = (b, k) => k === "isbn" ? (b.isbn || b.id) : k === "avail" ? (b.availableCopies || 0) : (b[k] || "");
 const gStu = s => s.id;
-const gLoan = (l, k) => k === "title" ? (l.title || l.isbn || "") : k === "loanDate" ? secs(l.loanDate) : k === "returnDate" ? secs(l.returnDate)
+const gLoan = (l, k) => k === "title" ? (l.title || l.isbn || "") : k === "loanDate" ? secs(l.loanDate)
   : k === "end" ? secs(l.returnedAt || l.closedAt) : k === "status" ? loanTag(l)[1] : (l[k] || "");
 const gDel = (s, k) => k === "deletedAt" ? secs(s.deletedAt) : s.id;
 // ---------- Idioma: castellano / euskara ----------
@@ -1025,7 +1179,7 @@ const EU = {
 "Eliminar":"Ezabatu","Cambio guardado":"Aldaketa gorde da","Persona eliminada":"Pertsona ezabatu da","¿Seguro que quieres quitar a esta persona del centro?":"Ziur zaude pertsona hau ikastetxetik kendu nahi duzula?",
 "Editar libro":"Editatu liburua","Guardar cambios":"Gorde aldaketak","Centro actualizado.":"Ikastetxea eguneratu da.","Centro eliminado":"Ikastetxea ezabatu da",
 "Si quieres eliminar el centro, escribe ELIMINAR en la siguiente casilla para borrarlo.":"Ikastetxea ezabatu nahi baduzu, idatzi EZABATU hurrengo laukian ezabatzeko.","Cerrar":"Itxi","Escribe ELIMINAR":"Idatzi EZABATU",
-"Cargando libros…":"Liburuak kargatzen…","Incorporar libro":"Liburua gehitu","Exportar biblioteca a Excel":"Esportatu liburutegia Excelera","Buscar por título, autor o ISBN":"Bilatu izenburua, egilea edo ISBN bidez",
+"Cargando libros…":"Liburuak kargatzen…","Incorporar libro":"Liburua gehitu","Exportar biblioteca a Excel":"Esportatu liburutegia Excelera","Buscar por título, autor, género o ISBN":"Bilatu izenburua, egilea, generoa edo ISBN bidez","Género":"Generoa","Edad":"Adina","Edad recomendada":"Gomendatutako adina","Ej.: 6-8":"Adib.: 6-8",
 "Título":"Izenburua","Autor":"Egilea","Editorial":"Argitaletxea","ISBN":"ISBN","Disponibles":"Eskuragarri","Ningún libro coincide con la búsqueda.":"Ez dago bilaketarekin bat datorren libururik.",
 "Todavía no hay libros.":"Oraindik ez dago libururik.","Eliminar libro":"Ezabatu liburua","Ejemplares totales":"Ale guztiak","Libro actualizado.":"Liburua eguneratu da.",
 "No se puede eliminar: tiene préstamos activos":"Ezin da ezabatu: maileguak aktiboak ditu","Libro eliminado.":"Liburua ezabatu da.","Página anterior":"Aurreko orrialdea","Página siguiente":"Hurrengo orrialdea",
@@ -1033,9 +1187,9 @@ const EU = {
 "Ya existe un libro con ese ISBN":"Badago liburu bat ISBN horrekin","Libro incorporado a la biblioteca.":"Liburua liburutegira gehitu da.","ISBN no válido":"ISBN baliogabea","Autor desconocido":"Egile ezezaguna",
 "¿Es este el libro que quieres añadir?":"Hau al da gehitu nahi duzun liburua?","Ejemplares a añadir":"Gehitzeko aleak","Sí, añadir":"Bai, gehitu","No, escanear otro":"Ez, eskaneatu beste bat",
 "Rellenar manualmente":"Bete eskuz","Escanear otro":"Eskaneatu beste bat","Buscando datos del libro…":"Liburuaren datuak bilatzen…","Ejemplares añadidos al libro existente.":"Aleak lehendik zegoen liburuari gehitu zaizkio.",
-"Apunta al código de barras del libro (el del ISBN, que empieza por 978 o 979). Sujétalo a unos 20-30 cm, con buena luz y sin reflejos.":"Zuzendu kamera liburuaren barra-kodera (ISBNarena, 978 edo 979 zenbakiekin hasten dena). Eduki 20-30 cm-ra, argi onarekin eta islarik gabe.",
+"Apunta al código de barras del libro (el del ISBN, que empieza por 978 o 979). Acércalo hasta que llene el recuadro, con buena luz y sin reflejos.":"Zuzendu kamera liburuaren barra-kodera (ISBNarena, 978 edo 979 zenbakiekin hasten dena). Hurbildu laukia bete arte, argi onarekin eta islarik gabe.",
 "Abriendo cámara…":"Kamera irekitzen…","¿No lo detecta? Escribe el ISBN":"Ez du detektatzen? Idatzi ISBNa","¿No lo detecta? Escribe el código del alumno":"Ez du detektatzen? Idatzi ikaslearen kodea","Continuar":"Jarraitu",
-"Buscando código de barras…":"Barra-kodea bilatzen…","Buscando código QR…":"QR kodea bilatzen…","No se pudo abrir la cámara. Revisa los permisos del navegador o escribe el código abajo.":"Ezin izan da kamera ireki. Begiratu nabigatzailearen baimenak edo idatzi kodea behean.",
+"Buscando código de barras…":"Barra-kodea bilatzen…","Buscando código QR…":"QR kodea bilatzen…","Buscando código QR… Coloca el QR dentro del recuadro.":"QR kodea bilatzen… Jarri QRa laukiaren barruan.","Buscando código de barras… Acerca el libro hasta que el código llene el recuadro.":"Barra-kodea bilatzen… Hurbildu liburua kodeak laukia bete arte.","No se pudo abrir la cámara. Revisa los permisos del navegador o escribe el código abajo.":"Ezin izan da kamera ireki. Begiratu nabigatzailearen baimenak edo idatzi kodea behean.",
 "Cargando alumnado…":"Ikasleak kargatzen…","Crear alumnos":"Sortu ikasleak","Recuperar alumnos":"Berreskuratu ikasleak","Imprimir":"Inprimatu","Buscar código":"Bilatu kodea","Código":"Kodea",
 "Todavía no hay alumnos.":"Oraindik ez dago ikaslerik.","Eliminar alumno":"Ezabatu ikaslea","¿Cuántos alumnos quieres crear?":"Zenbat ikasle sortu nahi dituzu?","Alumno creado.":"Ikaslea sortu da.",
 "No hay alumnos para imprimir":"Ez dago inprimatzeko ikaslerik","Alumnos eliminados":"Ezabatutako ikasleak","Eliminado el":"Ezabatze-data","Recuperar":"Berreskuratu","No hay alumnos eliminados.":"Ez dago ezabatutako ikaslerik.",
@@ -1046,8 +1200,8 @@ const EU = {
 "Sí":"Bai","Registrando…":"Erregistratzen…","Prestar otro libro":"Eman beste liburu bat maileguan","Devolver otro libro":"Itzuli beste liburu bat","Escanear otro alumno":"Eskaneatu beste ikasle bat","Volver":"Atzera",
 "No quedan ejemplares disponibles":"Ez dago alerik eskuragarri","Ese préstamo ya no está activo":"Mailegu hori ez dago aktibo","El préstamo ya no está activo":"Mailegua ez dago aktibo","No se pudo registrar":"Ezin izan da erregistratu",
 "Cargando historial…":"Historiala kargatzen…","Libros fuera de centro":"Ikastetxetik kanpo dauden liburuak","Exportar historial a Excel":"Esportatu historiala Excelera","Buscar por libro, alumno o ISBN":"Bilatu liburua, ikaslea edo ISBN bidez",
-"Libro":"Liburua","Alumno":"Ikaslea","Préstamo":"Mailegua","Devolución":"Itzulketa","Estado":"Egoera","Retrasado":"Berandu","Prestado":"Maileguan","Devuelto":"Itzulita","Perdido":"Galduta",
-"Todavía no hay préstamos registrados.":"Oraindik ez dago maileguik erregistratuta.","Buscar por alumno o libro":"Bilatu ikaslea edo liburua","Fecha límite":"Epemuga","Libro perdido":"Liburu galdua",
+"Libro":"Liburua","Alumno":"Ikaslea","Préstamo":"Mailegua","Devolución":"Itzulketa","Estado":"Egoera","Prestado":"Maileguan","Devuelto":"Itzulita","Perdido":"Galduta",
+"Todavía no hay préstamos registrados.":"Oraindik ez dago maileguik erregistratuta.","Buscar por alumno o libro":"Bilatu ikaslea edo liburua","Libro perdido":"Liburu galdua",
 "Marcar como libro perdido y cerrar el préstamo":"Markatu liburu galdu gisa eta itxi mailegua","No hay libros fuera del centro.":"Ez dago ikastetxetik kanpo libururik.","Préstamo cerrado":"Mailegua itxi da",
 "Biblioteca":"Liburutegia","Prestados":"Maileguan","Ejemplar":"Alea","Fecha de préstamo":"Mailegu-data","Devolución / cierre":"Itzulketa / itxiera",
 "Este libro no está en la biblioteca. ¿Quieres incorporarlo y continuar con el préstamo?":"Liburu hau ez dago liburutegian. Gehitu eta mailegua jarraitu nahi duzu?",
@@ -1067,7 +1221,7 @@ const EU_RE = [
   [/^Este libro ya está en tu biblioteca \((\d+) ejemplares?\)\. Si aceptas, se sumarán los ejemplares indicados\.$/, n => `Liburu hau dagoeneko zure liburutegian dago (${n} ale). Onartzen baduzu, adierazitako aleak gehituko dira.`],
   [/^No quedan ejemplares disponibles de «(.*)»\.$/, t => `Ez dago alerik eskuragarri «${t}» liburuarenak.`],
   [/^El código «(.*)» no corresponde a ningún alumno$/, c => `«${c}» kodea ez dator ikasle batekin bat`],
-  [/^Se ha registrado el préstamo del libro «(.*)» al alumno (\S+)\. Fecha límite de devolución: (.*)\.$/, (t, a, d) => `«${t}» liburuaren mailegua erregistratu da ${a} ikaslearentzat. Itzultzeko epemuga: ${d}.`],
+  [/^Se ha registrado el préstamo del libro «(.*)» al alumno (\S+)\.$/, (t, a) => `«${t}» liburuaren mailegua erregistratu da ${a} ikaslearentzat.`],
   [/^Se ha registrado la devolución del libro «(.*)» del alumno (\S+)\.$/, (t, a) => `«${t}» liburuaren itzulketa erregistratu da (${a} ikaslea).`],
   [/^El alumno (\S+) no tiene prestado «(.*)»\.$/, (a, t) => `${a} ikasleak ez du «${t}» maileguan.`],
   [/^(\d+) alumnos creados\.$/, n => `${n} ikasle sortu dira.`],
@@ -1135,5 +1289,3 @@ setLang(lang);
 </script>
 </body>
 </html>
-
-  
