@@ -75,7 +75,8 @@ th.sortable{cursor:pointer;user-select:none;-webkit-user-select:none}
 th.sortable:hover{background:#f1f3f4}
 th .arr{color:var(--blue-d)}
 .camBox{position:relative;width:100%;max-width:480px;margin:0 auto;border-radius:8px;overflow:hidden;background:#000}
-.camBox video{width:100%;display:block}
+.camBox video{width:100%;max-height:min(36vh,260px);aspect-ratio:16/9;object-fit:cover;display:block}.camBox{max-height:min(36vh,260px)}.camBox #cam{height:auto}.camBox .videoWrapper,.camBox canvas{max-height:min(36vh,260px)}
+.book-thumb{width:42px;height:58px;object-fit:contain;border-radius:5px;background:#eef2f3;display:block;box-shadow:0 2px 7px rgba(20,45,55,.12)}.book-thumb-cell{width:58px;padding:6px 8px!important}.book-title-cell{min-width:150px}
 .camBox canvas{display:none}
 .steps{display:flex;list-style:none;padding:0;margin:0 0 16px;gap:4px}
 .steps li{flex:1;min-width:0;text-align:center;font-size:.78rem;color:var(--muted);position:relative;overflow-wrap:anywhere}
@@ -94,6 +95,7 @@ th .arr{color:var(--blue-d)}
 .camBox.qr::after{top:12%;height:76%;aspect-ratio:1;left:50%;transform:translateX(-50%)}
 #msg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#202124;color:#fff;padding:10px 18px;border-radius:8px;display:none;max-width:90vw}
 #msg.err{background:var(--red)}
+.camBox video,.camBox canvas{max-width:100%!important}
 </style>
 
 <style id="mailegutxoko-modern-theme">
@@ -242,7 +244,7 @@ header.top p{margin:0 0 0 3px}
 .menu button:nth-child(5):before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235d7d45' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='9' cy='8' r='3'/%3E%3Cpath d='M3 20v-1a6 6 0 0 1 12 0v1M16 11l2 2 4-4'/%3E%3C/svg%3E")}
 .menu button:after{flex:0 0 auto;margin-left:auto;padding-left:5px}
 .history-table{table-layout:fixed;min-width:760px}
-.history-table .history-book-col{width:36%}
+.history-table .history-book-col{width:42%}
 .history-table .history-student-col{width:16%}
 .history-table td:first-child .ell{max-width:none;width:100%;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:900px){.menu{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -253,6 +255,10 @@ header.top p{margin:0 0 0 3px}
   .menu button:before{width:28px;height:28px;flex-basis:28px;margin-right:8px;background-size:18px 18px}
 }
 @media(max-width:430px){.menu{grid-template-columns:1fr}.menu button{min-height:62px}}
+/* Visor de cámara compacto en móvil y escritorio, también para el vídeo creado por Quagga. */
+.camBox{width:min(100%,420px)!important;height:min(34vh,240px);min-height:150px;max-height:240px!important;margin:0 auto;}
+.camBox video,.camBox canvas,.camBox .videoWrapper{width:100%!important;height:100%!important;max-height:240px!important;object-fit:contain;}
+.book-thumb{flex:none}
 
 </style>
 
@@ -284,7 +290,6 @@ header.top p{margin:0 0 0 3px}
   // Initialize Firebase
   const app = initializeApp(firebaseConfig);
 </script>
-
   
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-auth-compat.min.js"></script>
@@ -445,7 +450,7 @@ async function renderChooser(){
   const alertHtml = alerts.map(a => `<div class="banner"><span>Hay ${a.n} solicitud${a.n > 1 ? "es" : ""} nueva${a.n > 1 ? "s" : ""} para unirse a «${esc(a.name)}».</span><button class="small" onclick="enterSchool('${a.sid}','members')">Ver</button></div>`).join("");
   const rowHtml = rows.map(r => { const t = st[r.status] || st.pending;
     return `<div class="row"><div class="info"><strong>${esc(r.schoolName)}</strong><small>${r.role === "admin" ? "Administrador" : "Usuario"} · <span class="tag ${t[0]}">${t[1]}</span></small></div>
-    <div class="acts">${r.status === "active" ? `<button class="small" onclick="enterSchool('${r.sid}')">Entrar</button>` : ""}${isSuper ? `<button class="small" aria-label="Editar centro" onclick="editSchool('${r.sid}')">${PENCIL}</button><button class="small danger" aria-label="Eliminar centro" onclick="askDelete('${r.sid}')">×</button>` : ""}</div></div>`; }).join("");
+    <div class="acts">${r.status === "active" ? `<button class="small" onclick="enterSchool('${r.sid}')">Entrar</button>${!isSuper ? `<button class="small danger" onclick="askLeaveSchool('${r.sid}', '${esc(r.schoolName)}')">Borrar</button>` : ""}` : ""}${isSuper ? `<button class="small" aria-label="Editar centro" onclick="editSchool('${r.sid}')">${PENCIL}</button><button class="small danger" aria-label="Eliminar centro" onclick="askDelete('${r.sid}')">×</button>` : ""}</div></div>`; }).join("");
   const ownHtml = owned.map(d => { const s = d.data(), rej = s.status === "rejected";
     return `<div class="row"><div class="info"><strong>${esc(s.name)}</strong><small>Registro de centro · <span class="tag ${rej ? "off" : "wait"}">${rej ? "Rechazado" : "Pendiente de aprobación"}</span></small></div></div>`; }).join("");
   const pendHtml = pending.map(d => { const s = d.data();
@@ -455,6 +460,35 @@ async function renderChooser(){
     (isSuper ? `<div class="panel"><h3>Solicitudes de registro de centros</h3>${pendHtml || '<div class="empty">No hay solicitudes pendientes.</div>'}</div>` : "") +
     `<div class="panel"><h3>${isSuper ? "Todos los centros" : "Mis centros"}</h3>${rowHtml + ownHtml || '<div class="empty">Todavía no tienes acceso a ningún centro.</div>'}</div>
     <nav class="menu"><button onclick="renderJoin()">Unirme a un nuevo centro</button><button onclick="renderRegister()">Registrar un nuevo centro</button></nav>`;
+}
+
+// ---------- Salir de un centro (administradores y usuarios; nunca superadministrador) ----------
+function askLeaveSchool(sid, schoolName){
+  if(isSuper || !me) return;
+  const eus = lang === "eus";
+  const title = eus ? `«${schoolName}» ikastetxetik irten` : `Salir de «${schoolName}»`;
+  const prompt = eus ? "Ziur zaude ikastetxe honetatik irten nahi duzula? Liburutegirako sarbidea galduko duzu eta berriro sartzeko eskaera egin beharko duzu. Idatzi IRTEN berresteko." : "¿Seguro que quieres salir de este centro? Perderás el acceso a su biblioteca y tendrás que volver a solicitarlo. Escribe SALIR para confirmar.";
+  const word = eus ? "IRTEN" : "SALIR";
+  const o = document.createElement("div"); o.className = "overlay";
+  o.innerHTML = `<div class="dialog" role="dialog" aria-modal="true"><button class="x" aria-label="${eus ? "Itxi" : "Cerrar"}">×</button><h3>${title}</h3><p>${prompt}</p><input autocomplete="off" aria-label="${word}" placeholder="${word}"><button class="danger" disabled>${eus ? "Irten (5)" : "Borrar (5)"}</button></div>`;
+  document.body.appendChild(o);
+  const inp = o.querySelector("input"), go = o.querySelector(".danger"); let left = 5;
+  const upd = () => { go.disabled = !(left <= 0 && inp.value.trim().toUpperCase() === word); go.textContent = left > 0 ? (eus ? `Irten (${left})` : `Borrar (${left})`) : (eus ? "Irten" : "Borrar"); };
+  const timer = setInterval(() => { left--; if(left <= 0) clearInterval(timer); upd(); }, 1000);
+  const close = () => { clearInterval(timer); document.removeEventListener("keydown", onKey); o.remove(); };
+  const onKey = e => { if(e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey); o.querySelector(".x").onclick = close; inp.oninput = upd; inp.focus();
+  go.onclick = async () => {
+    if(go.disabled || isSuper) return;
+    go.disabled = true;
+    try{
+      // Solo se elimina la pertenencia del usuario: libros, alumnos y préstamos permanecen intactos.
+      await memberRef(sid, me.uid).delete();
+      localStorage.removeItem("school_" + me.uid);
+      toast(eus ? "Ikastetxetik irten zara. Berriro sartzeko sarbidea eskatu beharko duzu." : "Has salido del centro. Tendrás que solicitar acceso de nuevo.");
+      close(); renderChooser();
+    }catch(err){ go.disabled = false; fail(err); }
+  };
 }
 
 // ---------- Registrar centro ----------
@@ -641,6 +675,17 @@ function modal(inner){
   document.addEventListener("scroll", hide, true);
 })();
 
+// Miniatura de portada: usa la portada guardada si existe y, si no, consulta Open Library por ISBN.
+function bookCoverUrl(isbn, cover){
+  if(cover) return cover;
+  const code = String(isbn || "").replace(/[^0-9Xx]/g, "");
+  return code ? `https://covers.openlibrary.org/b/isbn/${encodeURIComponent(code)}-S.jpg?default=false` : "";
+}
+function bookThumb(isbn, cover, title){
+  const src = bookCoverUrl(isbn, cover);
+  const fallback = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 42 58'%3E%3Crect width='42' height='58' rx='4' fill='%23e8eeee'/%3E%3Cpath d='M11 12h20v34H11zM16 19h10M16 24h10M16 29h7' fill='none' stroke='%23839a9b' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E";
+  return `<img class="book-thumb" src="${esc(src || fallback)}" alt="Portada de ${esc(title || "libro")}" loading="lazy" onerror="this.onerror=null;this.src='${fallback}'">`;
+}
 // ---------- Libros ----------
 let booksCache = [], bookQ = "", bookPage = 0;
 async function renderBooks(){
@@ -657,8 +702,8 @@ function drawBooks(){
   const q = bookQ.toLowerCase(), list = sorted(booksCache.filter(b => `${b.title} ${b.author} ${b.genre || ""} ${b.age || ""} ${b.isbn || b.id}`.toLowerCase().includes(q)), "books", gBook);
   const pages = Math.max(1, Math.ceil(list.length / BOOKS_PER_PAGE)); bookPage = Math.min(bookPage, pages - 1);
   const rows = list.slice(bookPage * BOOKS_PER_PAGE, (bookPage + 1) * BOOKS_PER_PAGE), pg = PAGER("setBookPage", bookPage, pages);
-  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr>${sth("books", "title", "Título")}${sth("books", "author", "Autor")}${sth("books", "publisher", "Editorial")}${sth("books", "genre", "Género")}${sth("books", "age", "Edad")}${sth("books", "isbn", "ISBN")}${sth("books", "avail", "Disponibles")}${cur.admin ? "<th></th>" : ""}</tr></thead><tbody>` +
-    rows.map(b => `<tr><td><div class="ell">${esc(b.title)}</div></td><td><div class="ell s">${esc(b.author)}</div></td><td><div class="ell s">${esc(b.publisher)}</div></td><td><div class="ell s">${esc(b.genre) || "—"}</div></td><td>${esc(b.age) || "—"}</td><td>${esc(b.isbn || b.id)}</td>
+  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr><th></th>${sth("books", "title", "Título")}${sth("books", "author", "Autor")}${sth("books", "publisher", "Editorial")}${sth("books", "genre", "Género")}${sth("books", "age", "Edad")}${sth("books", "isbn", "ISBN")}${sth("books", "avail", "Disponibles")}${cur.admin ? "<th></th>" : ""}</tr></thead><tbody>` +
+    rows.map(b => `<tr><td class="book-thumb-cell">${bookThumb(b.isbn || b.id, b.cover, b.title)}</td><td class="book-title-cell"><div class="ell">${esc(b.title)}</div></td><td><div class="ell s">${esc(b.author)}</div></td><td><div class="ell s">${esc(b.publisher)}</div></td><td><div class="ell s">${esc(b.genre) || "—"}</div></td><td>${esc(b.age) || "—"}</td><td>${esc(b.isbn || b.id)}</td>
       <td><span class="tag ${b.availableCopies > 0 ? "" : "off"}">${b.availableCopies ?? 0} / ${b.totalCopies ?? 0}</span></td>
       ${cur.admin ? `<td><div class="acts" style="flex-wrap:nowrap"><button class="small" aria-label="Editar libro" onclick="editBook('${esc(b.id)}')">${PENCIL}</button><button class="small danger" aria-label="Eliminar libro" onclick="deleteBook('${esc(b.id)}')">×</button></div></td>` : ""}</tr>`).join("") +
     `</tbody></table>${rows.length ? "" : `<div class="empty" style="padding:16px">${booksCache.length ? "Ningún libro coincide con la búsqueda." : "Todavía no hay libros."}</div>`}</div>` + pg;
@@ -993,7 +1038,7 @@ async function onLoanIsbn(code){
     return;
   }
   $app.innerHTML = bar + `<div class="panel"><h3>${lend ? "¿Es este el libro que quieres prestar?" : "¿Es este el libro que quieres devolver?"}</h3>
-    <div class="bookbox"><div><p><strong>${esc(loanBook.title)}</strong></p><p>${esc(loanBook.author)}</p><p>${esc(loanBook.publisher)}</p><p>ISBN ${esc(isbn)}</p>
+    <div class="bookbox">${bookThumb(loanBook.isbn || loanBook.id, loanBook.cover, loanBook.title)}<div><p><strong>${esc(loanBook.title)}</strong></p><p>${esc(loanBook.author)}</p><p>${esc(loanBook.publisher)}</p><p>ISBN ${esc(isbn)}</p>
     <p class="empty">Disponibles: ${loanBook.availableCopies ?? 0} / ${loanBook.totalCopies ?? 0}</p></div></div>
     <div class="tools"><button onclick="loanStudentScreen()">Sí</button><button class="ghost" onclick="loanIsbnScreen()">No, escanear otro</button></div></div>`;
 }
@@ -1087,8 +1132,8 @@ function drawHistory(){
   const q = histQ.toLowerCase(), list = sorted(histCache.filter(l => `${l.title} ${l.studentCode} ${l.isbn}`.toLowerCase().includes(q)), "hist", gLoan);
   const pages = Math.max(1, Math.ceil(list.length / PAGE30)); histPage = Math.min(histPage, pages - 1);
   const rows = list.slice(histPage * PAGE30, (histPage + 1) * PAGE30), pg = PAGER("setHistPage", histPage, pages);
-  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table class="history-table"><colgroup><col class="history-book-col"><col class="history-student-col"><col><col><col></colgroup><thead><tr>${sth("hist", "title", "Libro")}${sth("hist", "studentCode", "Alumno")}${sth("hist", "loanDate", "Préstamo")}${sth("hist", "end", "Devolución")}${sth("hist", "status", "Estado")}</tr></thead><tbody>` +
-    rows.map(l => { const t = loanTag(l); return `<tr><td><div class="ell">${esc(l.title || l.isbn)}</div></td><td>${esc(l.studentCode)}</td><td class="hm">${dt(l.loanDate)}</td><td>${dt(l.returnedAt || l.closedAt)}</td><td><span class="tag ${t[0]}">${t[1]}</span></td></tr>`; }).join("") +
+  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table class="history-table"><colgroup><col style="width:54px"><col class="history-book-col"><col class="history-student-col"><col><col><col></colgroup><thead><tr><th></th>${sth("hist", "title", "Libro")}${sth("hist", "studentCode", "Alumno")}${sth("hist", "loanDate", "Préstamo")}${sth("hist", "end", "Devolución")}${sth("hist", "status", "Estado")}</tr></thead><tbody>` +
+    rows.map(l => { const t = loanTag(l); return `<tr><td class="book-thumb-cell">${bookThumb(l.isbn, l.cover, l.title)}</td><td><div class="ell">${esc(l.title || l.isbn)}</div></td><td>${esc(l.studentCode)}</td><td class="hm">${dt(l.loanDate)}</td><td>${dt(l.returnedAt || l.closedAt)}</td><td><span class="tag ${t[0]}">${t[1]}</span></td></tr>`; }).join("") +
     `</tbody></table>${rows.length ? "" : '<div class="empty" style="padding:16px">Todavía no hay préstamos registrados.</div>'}</div>` + pg;
 }
 function setHistPage(p){ histPage = p; drawHistory(); document.getElementById("tbl").scrollIntoView({ block: "start" }); }
@@ -1112,8 +1157,8 @@ function drawOut(){
   const q = outQ.toLowerCase(), list = sorted(outList.filter(l => `${l.title} ${l.studentCode} ${l.isbn}`.toLowerCase().includes(q)), "out", gLoan);
   const pages = Math.max(1, Math.ceil(list.length / PAGE30)); outPage = Math.min(outPage, pages - 1);
   const rows = list.slice(outPage * PAGE30, (outPage + 1) * PAGE30), pg = PAGER("setOutPage", outPage, pages);
-  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr>${sth("out", "studentCode", "Alumno")}${sth("out", "title", "Libro")}${sth("out", "loanDate", "Préstamo")}${cur.admin ? "<th></th>" : ""}</tr></thead><tbody>` +
-    rows.map(l => `<tr><td><strong>${esc(l.studentCode)}</strong></td><td><div class="ell">${esc(l.title || l.isbn)}</div></td><td class="hm">${dt(l.loanDate)}</td>
+  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr>${sth("out", "studentCode", "Alumno")}<th></th>${sth("out", "title", "Libro")}${sth("out", "loanDate", "Préstamo")}${cur.admin ? "<th></th>" : ""}</tr></thead><tbody>` +
+    rows.map(l => `<tr><td><strong>${esc(l.studentCode)}</strong></td><td class="book-thumb-cell">${bookThumb(l.isbn, l.cover, l.title)}</td><td><div class="ell">${esc(l.title || l.isbn)}</div></td><td class="hm">${dt(l.loanDate)}</td>
       ${cur.admin ? `<td><button class="small danger" title="Marcar como libro perdido y cerrar el préstamo" aria-label="Libro perdido" onclick="closeLoan('${esc(l.id)}')">Libro perdido</button></td>` : ""}</tr>`).join("") +
     `</tbody></table>${rows.length ? "" : '<div class="empty" style="padding:16px">No hay libros fuera del centro.</div>'}</div>` + pg;
 }
