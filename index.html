@@ -96,7 +96,7 @@ th .arr{color:var(--blue-d)}
 </head>
 <body>
 <main>
-  <div class="user"><span id="userbar"></span><button class="ghost small" id="lang" type="button" aria-label="Cambiar idioma" onclick="setLang(lang === 'eus' ? 'es' : 'eus')">EUS</button></div>
+  <div class="user"><span id="userbar"></span><button class="ghost small" id="lang" type="button" aria-label="Cambiar idioma" onclick="toggleLang()">EUS</button></div>
   <header class="top"><h1>📚 Mailegutxoko</h1><p>Ikastetxeko liburutegia</p></header>
   <div id="app"><div class="empty">Cargando…</div></div>
 </main>
@@ -122,7 +122,6 @@ th .arr{color:var(--blue-d)}
   const app = initializeApp(firebaseConfig);
 </script>
 
-  
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-auth-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-firestore-compat.min.js"></script>
@@ -160,7 +159,7 @@ function setBar(){
   if(me) document.getElementById("out").onclick = () => auth.signOut();
 }
 let verifyTimer = null;
-const authLang = () => { auth.languageCode = lang === "eus" ? "eu" : "es"; };
+const authLang = () => { auth.languageCode = "es"; };   // una sola plantilla bilingüe (euskara + castellano): se edita en Authentication → Plantillas
 auth.onAuthStateChanged(async u => {
   me = u; isSuper = false; clearInterval(verifyTimer); setBar();
   if(!u) return renderLogin();
@@ -801,8 +800,8 @@ async function onLoanIsbn(code){
   let d;
   try{ d = await db.doc(`schools/${cur.sid}/books/${isbn}`).get(); }catch(e){ fail(e); return loanIsbnScreen(); }
   if(!d.exists){
-    $app.innerHTML = bar + `<div class="panel"><p style="margin-top:0">El libro con ISBN ${esc(isbn)} no está en la biblioteca de este centro.</p>
-      <div class="tools">${cur.admin ? `<button onclick="scanDone=false;onIsbn('${isbn}')">Incorporarlo a la biblioteca</button>` : ""}<button class="ghost" onclick="loanIsbnScreen()">Escanear otro</button></div></div>`;
+    if(lend) return offerAddAndLend(isbn);   // ofrece incorporarlo y seguir con el préstamo
+    $app.innerHTML = bar + `<div class="panel"><p style="margin-top:0">El libro con ISBN ${esc(isbn)} no está en la biblioteca de este centro.</p><button class="ghost" onclick="loanIsbnScreen()">Escanear otro</button></div>`;
     return;
   }
   loanBook = { id: d.id, ...d.data() };
@@ -814,6 +813,29 @@ async function onLoanIsbn(code){
     <div class="bookbox"><div><p><strong>${esc(loanBook.title)}</strong></p><p>${esc(loanBook.author)}</p><p>${esc(loanBook.publisher)}</p><p>ISBN ${esc(isbn)}</p>
     <p class="empty">Disponibles: ${loanBook.availableCopies ?? 0} / ${loanBook.totalCopies ?? 0}</p></div></div>
     <div class="tools"><button onclick="loanStudentScreen()">Sí</button><button class="ghost" onclick="loanIsbnScreen()">No, escanear otro</button></div></div>`;
+}
+let pendingIsbn = "";
+const loanBar = n => `<div class="bar"><button class="ghost" onclick="loanIsbnScreen()">← Volver</button><h2>${loanHead()}</h2></div>${stepper(n)}`;
+async function offerAddAndLend(isbn){
+  pendingIsbn = isbn;
+  $app.innerHTML = loanBar(2) + loading("Buscando datos del libro…");
+  const info = await lookupIsbn(isbn), b = info || { title: "", author: "", publisher: "", cover: "" };
+  $app.innerHTML = loanBar(2) + `<div class="panel"><h3>Este libro no está en la biblioteca. ¿Quieres incorporarlo y continuar con el préstamo?</h3>
+    <div class="bookbox">${b.cover ? `<img src="${esc(b.cover)}" alt="Portada">` : ""}<div><p>ISBN ${esc(isbn)}</p><p class="empty">${info ? "Revisa los datos y corrígelos si hace falta." : "No he encontrado datos de este libro. Rellénalos tú."}</p></div></div>
+    <form onsubmit="addAndContinue(event)"><label>Título<input name="title" required value="${esc(b.title)}"></label><label>Autor<input name="author" required value="${esc(b.author)}"></label>
+    <label>Editorial<input name="publisher" value="${esc(b.publisher)}"></label>
+    <div class="tools"><button>Sí, incorporar y continuar</button><button type="button" class="ghost" onclick="loanIsbnScreen()">No, escanear otro</button></div></form></div>`;
+}
+async function addAndContinue(e){
+  e.preventDefault();
+  const f = e.target, isbn = pendingIsbn, ref = db.doc(`schools/${cur.sid}/books/${isbn}`);
+  try{
+    if(!(await ref.get()).exists)   // por si otra persona lo ha incorporado mientras tanto
+      await ref.set({ isbn, title: f.title.value.trim(), author: f.author.value.trim(), publisher: f.publisher.value.trim(), totalCopies: 1, availableCopies: 1, activeLoans: 0, available: true, createdAt: FV.serverTimestamp() });
+    const d = await ref.get(); loanBook = { id: d.id, ...d.data() };
+    toast("Libro incorporado a la biblioteca.");
+    loanStudentScreen();   // sigue el préstamo: escanear el QR del alumno
+  }catch(err){ fail(err); }
 }
 async function onLoanStudent(text){
   if(scanDone) return;
@@ -1027,7 +1049,11 @@ const EU = {
 "Libro":"Liburua","Alumno":"Ikaslea","Préstamo":"Mailegua","Devolución":"Itzulketa","Estado":"Egoera","Retrasado":"Berandu","Prestado":"Maileguan","Devuelto":"Itzulita","Perdido":"Galduta",
 "Todavía no hay préstamos registrados.":"Oraindik ez dago maileguik erregistratuta.","Buscar por alumno o libro":"Bilatu ikaslea edo liburua","Fecha límite":"Epemuga","Libro perdido":"Liburu galdua",
 "Marcar como libro perdido y cerrar el préstamo":"Markatu liburu galdu gisa eta itxi mailegua","No hay libros fuera del centro.":"Ez dago ikastetxetik kanpo libururik.","Préstamo cerrado":"Mailegua itxi da",
-"Biblioteca":"Liburutegia","Prestados":"Maileguan","Ejemplar":"Alea","Fecha de préstamo":"Mailegu-data","Devolución / cierre":"Itzulketa / itxiera"
+"Biblioteca":"Liburutegia","Prestados":"Maileguan","Ejemplar":"Alea","Fecha de préstamo":"Mailegu-data","Devolución / cierre":"Itzulketa / itxiera",
+"Este libro no está en la biblioteca. ¿Quieres incorporarlo y continuar con el préstamo?":"Liburu hau ez dago liburutegian. Gehitu eta mailegua jarraitu nahi duzu?",
+"Revisa los datos y corrígelos si hace falta.":"Berrikusi datuak eta zuzendu behar bada.",
+"No he encontrado datos de este libro. Rellénalos tú.":"Ez dut liburu honen daturik aurkitu. Bete itzazu zuk.",
+"Sí, incorporar y continuar":"Bai, gehitu eta jarraitu","Portada":"Azala"
 };
 const EU_RE = [
   [/^Hay (\d+) solicitud(?:es)? nuevas? para unirse a «(.*)»\.$/, (n, c) => n === "1" ? `«${c}» ikastetxean sartzeko eskaera berri bat dago.` : `«${c}» ikastetxean sartzeko ${n} eskaera berri daude.`],
@@ -1104,7 +1130,10 @@ function setLang(l){
   trObs.disconnect();
   if(l === "eus"){ trAll(); trObs.observe(document.body, OBS_OPTS); } else trRestore();
 }
+function toggleLang(){ setLang(lang === "eus" ? "es" : "eus"); }
 setLang(lang);
 </script>
 </body>
 </html>
+
+  
