@@ -43,8 +43,8 @@ input{font:inherit;padding:10px;border:1px solid var(--line);border-radius:6px;w
 button.danger:hover{background:#a50e0e}
 button:disabled{background:#bdc1c6;cursor:not-allowed}
 .tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-.tablewrap{overflow:hidden;background:var(--card);border:1px solid var(--line);border-radius:10px}
-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.tablewrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse}
 th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);font-size:.93rem;white-space:nowrap}
 th{color:var(--muted)}
 .qr svg{width:56px;height:56px;display:block;background:#fff}
@@ -54,7 +54,7 @@ th{color:var(--muted)}
 .dialog h3{margin:0 28px 0 0}.dialog p{margin:0}
 .x{position:absolute;top:8px;right:8px;background:transparent;color:var(--muted);font-size:1.4rem;padding:2px 10px}
 .x:hover{background:#eee}
-.ell{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.ell{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .ell.s{max-width:150px}
 #tip{position:fixed;display:none;z-index:20;background:#202124;color:#fff;padding:6px 10px;border-radius:6px;max-width:min(420px,90vw);font-size:.9rem;pointer-events:none}
 .pager{display:flex;gap:12px;align-items:center;justify-content:center;margin:12px 0;color:var(--muted)}
@@ -62,9 +62,22 @@ th{color:var(--muted)}
 .bookbox{display:flex;gap:16px;align-items:flex-start;margin-bottom:12px}
 .bookbox img{max-height:130px;border-radius:4px}
 .bookbox p{margin:2px 0}
-@media(max-width:640px){.hm{display:none}th,td{padding:10px 6px}th{font-size:.8rem}}
+@media(max-width:640px){th,td{padding:10px 8px}}
 .isbnform{margin-top:12px}
 .late{color:var(--red);font-weight:600}
+.bar{flex-wrap:wrap}
+.bar h2{min-width:0;overflow-wrap:anywhere}
+.row .info{overflow-wrap:anywhere}
+.banner{flex-wrap:wrap}
+.user{flex-wrap:wrap}
+.sname{overflow-wrap:anywhere}
+.tag{white-space:nowrap}
+th.sortable{cursor:pointer;user-select:none;-webkit-user-select:none}
+th.sortable:hover{background:#f1f3f4}
+th .arr{color:var(--blue-d)}
+.camBox{position:relative;width:100%;max-width:480px;margin:0 auto;border-radius:8px;overflow:hidden;background:#000}
+.camBox video{width:100%;display:block}
+.camBox canvas{display:none}
 #msg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#202124;color:#fff;padding:10px 18px;border-radius:8px;display:none;max-width:90vw}
 #msg.err{background:var(--red)}
 </style>
@@ -104,6 +117,7 @@ th{color:var(--muted)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
 <script>
 const SUPER_EMAIL = "j.borrego@irakasle.eus";
 firebase.initializeApp({
@@ -148,10 +162,10 @@ function renderLogin(){
     <form id="f"><label>Correo<input type="email" name="e" required autocomplete="email"></label>
     <label>Contraseña (mínimo 6 caracteres)<input type="password" name="p" minlength="6" required autocomplete="current-password"></label>
     <button>Entrar</button><button type="button" class="ghost" id="reg">Crear cuenta con este correo</button></form></div>`;
-  document.getElementById("g").onclick = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(fail);
+  document.getElementById("g").onclick = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(authFail);
   const f = document.getElementById("f");
-  f.onsubmit = e => { e.preventDefault(); auth.signInWithEmailAndPassword(f.e.value, f.p.value).catch(fail); };
-  document.getElementById("reg").onclick = () => { if(f.reportValidity()) auth.createUserWithEmailAndPassword(f.e.value, f.p.value).catch(fail); };
+  f.onsubmit = e => { e.preventDefault(); auth.signInWithEmailAndPassword(f.e.value, f.p.value).catch(authFail); };
+  document.getElementById("reg").onclick = () => { if(f.reportValidity()) auth.createUserWithEmailAndPassword(f.e.value, f.p.value).catch(authFail); };
 }
 
 // ---------- Lista de centros ----------
@@ -393,11 +407,11 @@ async function renderBooks(){
   drawBooks();
 }
 function drawBooks(){
-  const q = bookQ.toLowerCase(), list = booksCache.filter(b => `${b.title} ${b.author} ${b.isbn || b.id}`.toLowerCase().includes(q));
+  const q = bookQ.toLowerCase(), list = sorted(booksCache.filter(b => `${b.title} ${b.author} ${b.isbn || b.id}`.toLowerCase().includes(q)), "books", gBook);
   const pages = Math.max(1, Math.ceil(list.length / BOOKS_PER_PAGE)); bookPage = Math.min(bookPage, pages - 1);
   const rows = list.slice(bookPage * BOOKS_PER_PAGE, (bookPage + 1) * BOOKS_PER_PAGE), pg = PAGER("setBookPage", bookPage, pages);
-  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr><th style="width:26%">Título</th><th style="width:18%">Autor</th><th class="hm" style="width:16%">Editorial</th><th class="hm" style="width:14%">ISBN</th><th style="width:92px">Disponibles</th>${cur.admin ? '<th style="width:88px"></th>' : ""}</tr></thead><tbody>` +
-    rows.map(b => `<tr><td><div class="ell">${esc(b.title)}</div></td><td><div class="ell">${esc(b.author)}</div></td><td class="hm"><div class="ell">${esc(b.publisher)}</div></td><td class="hm"><div class="ell">${esc(b.isbn || b.id)}</div></td>
+  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr>${sth("books", "title", "Título")}${sth("books", "author", "Autor")}${sth("books", "publisher", "Editorial")}${sth("books", "isbn", "ISBN")}${sth("books", "avail", "Disponibles")}${cur.admin ? "<th></th>" : ""}</tr></thead><tbody>` +
+    rows.map(b => `<tr><td><div class="ell">${esc(b.title)}</div></td><td><div class="ell s">${esc(b.author)}</div></td><td><div class="ell s">${esc(b.publisher)}</div></td><td>${esc(b.isbn || b.id)}</td>
       <td><span class="tag ${b.availableCopies > 0 ? "" : "off"}">${b.availableCopies ?? 0} / ${b.totalCopies ?? 0}</span></td>
       ${cur.admin ? `<td><div class="acts" style="flex-wrap:nowrap"><button class="small" aria-label="Editar libro" onclick="editBook('${esc(b.id)}')">${PENCIL}</button><button class="small danger" aria-label="Eliminar libro" onclick="deleteBook('${esc(b.id)}')">🗑</button></div></td>` : ""}</tr>`).join("") +
     `</tbody></table>${rows.length ? "" : `<div class="empty" style="padding:16px">${booksCache.length ? "Ningún libro coincide con la búsqueda." : "Todavía no hay libros."}</div>`}</div>` + pg;
@@ -433,8 +447,10 @@ function exportBooks(){
 
 // ---------- Incorporar libro: escáner o manual ----------
 let scanToken = 0, camStream = null, zxReader = null, scanDone = false, scanned = null;
+let quaggaOn = false, quaggaFn = null;
 function stopScanner(){
   scanToken++;
+  if(quaggaOn){ try{ Quagga.offDetected(quaggaFn); Quagga.stop(); }catch(e){} quaggaOn = false; }
   if(zxReader){ try{ zxReader.reset(); }catch(e){} zxReader = null; }
   if(camStream){ camStream.getTracks().forEach(t => t.stop()); camStream = null; }
 }
@@ -466,12 +482,7 @@ function toIsbn13(x){ // acepta ISBN-10 o ISBN-13 y devuelve siempre ISBN-13
   return x;
 }
 function renderScan(){
-  stopScanner(); scanDone = false;
-  $app.innerHTML = addBar("Añadir con escáner") + `<div class="panel"><p style="margin-top:0">Apunta al código de barras del libro (el del ISBN, que empieza por 978 o 979). Sujétalo a unos 20-30 cm, con buena luz y sin reflejos.</p>
-    <video id="cam" playsinline muted autoplay style="width:100%;max-width:480px;border-radius:8px;background:#000;display:block;margin:0 auto"></video>
-    <p class="empty" id="scanStatus">Abriendo cámara…</p>
-    <form class="isbnform" onsubmit="event.preventDefault();onIsbn(this.isbn.value)"><label>¿No lo detecta? Escribe el ISBN<input name="isbn" inputmode="numeric" required></label><button>Buscar libro</button></form></div>`;
-  startScan("isbn", onIsbn);
+  scanScreen("Añadir con escáner", "Apunta al código de barras del libro (el del ISBN, que empieza por 978 o 979). Sujétalo a unos 20-30 cm, con buena luz y sin reflejos.", "isbn", onIsbn, "renderAddBook()", "¿No lo detecta? Escribe el ISBN");
 }
 async function startScan(kind, cb){
   const token = ++scanToken, video = document.getElementById("cam"), status = document.getElementById("scanStatus");
@@ -491,7 +502,24 @@ async function startScan(kind, cb){
         if(token === scanToken) setTimeout(loop, qr ? 400 : 120);
       };
       loop();
-    }else{   // respaldo: lector ZXing (p. ej. Chrome/Edge en Windows, Firefox)
+    }else if(!qr && typeof Quagga !== "undefined"){   // iPhone/Safari y Windows: Quagga, pensado para códigos de barras 1D
+      video.remove();   // Quagga crea su propio <video> dentro de #camBox
+      await new Promise((ok, ko) => Quagga.init({
+        inputStream: { type: "LiveStream", target: document.getElementById("camBox"), constraints: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } },
+        locator: { patchSize: "medium", halfSample: false }, numOfWorkers: 0, frequency: 10, locate: true,
+        decoder: { readers: ["ean_reader"] }
+      }, err => err ? ko(err) : ok()));
+      if(token !== scanToken){ try{ Quagga.stop(); }catch(e){} return; }
+      let last = "", hits = 0;   // se exige leer el mismo código dos veces seguidas para evitar lecturas erróneas
+      quaggaFn = r => {
+        const c = r && r.codeResult && r.codeResult.code;
+        if(token !== scanToken || !c) return;
+        hits = c === last ? hits + 1 : 1; last = c;
+        if(hits >= 2 && /^97[89]\d{10}$/.test(c)) cb(c);
+      };
+      Quagga.onDetected(quaggaFn); Quagga.start(); quaggaOn = true;
+      say("Buscando código de barras…");
+    }else{   // respaldo: lector ZXing (códigos QR, Firefox…)
       if(typeof ZXing === "undefined") throw new Error("No se cargó la librería de lectura");
       const hints = new Map([[ZXing.DecodeHintType.POSSIBLE_FORMATS, [qr ? ZXing.BarcodeFormat.QR_CODE : ZXing.BarcodeFormat.EAN_13]], [ZXing.DecodeHintType.TRY_HARDER, true]]);
       const reader = new ZXing.BrowserMultiFormatReader(hints, 200); zxReader = reader;
@@ -559,10 +587,10 @@ async function renderStudents(){
   drawStudents();
 }
 function drawStudents(){
-  const q = stuQ.toLowerCase(), list = activeStudents().filter(s => s.id.toLowerCase().includes(q));
+  const q = stuQ.toLowerCase(), list = sorted(activeStudents().filter(s => s.id.toLowerCase().includes(q)), "students", gStu);
   const pages = Math.max(1, Math.ceil(list.length / STUDENTS_PER_PAGE)); stuPage = Math.min(stuPage, pages - 1);
   const rows = list.slice(stuPage * STUDENTS_PER_PAGE, (stuPage + 1) * STUDENTS_PER_PAGE), pg = PAGER("setStuPage", stuPage, pages);
-  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr><th style="width:90px">QR</th><th>Código</th>${cur.admin ? '<th style="width:70px"></th>' : ""}</tr></thead><tbody>` +
+  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr><th>QR</th>${sth("students", "id", "Código")}${cur.admin ? "<th></th>" : ""}</tr></thead><tbody>` +
     rows.map(s => `<tr><td class="qr">${qrSvg(s.id)}</td><td><strong>${esc(s.id)}</strong></td>${cur.admin ? `<td><button class="small danger" aria-label="Eliminar alumno" onclick="removeStudent('${esc(s.id)}')">🗑</button></td>` : ""}</tr>`).join("") +
     `</tbody></table>${rows.length ? "" : '<div class="empty" style="padding:16px">Todavía no hay alumnos.</div>'}</div>` + pg;
 }
@@ -584,12 +612,12 @@ async function removeStudent(id){
 let delPage = 0;
 function renderDeleted(){
   if(!cur.admin) return;
-  const list = stuCache.filter(s => s.deleted).sort((a, b) => a.id.localeCompare(b.id));
+  const list = sorted(stuCache.filter(s => s.deleted), "del", gDel);
   const pages = Math.max(1, Math.ceil(list.length / STUDENTS_PER_PAGE)); delPage = Math.min(delPage, pages - 1);
   const rows = list.slice(delPage * STUDENTS_PER_PAGE, (delPage + 1) * STUDENTS_PER_PAGE), pg = PAGER("setDelPage", delPage, pages);
   const when = s => s.deletedAt && s.deletedAt.toDate ? s.deletedAt.toDate().toLocaleDateString("es-ES") : "—";
   $app.innerHTML = `<div class="bar"><button class="ghost" onclick="renderStudents()">← Volver</button><h2>Alumnos eliminados</h2></div>` + pg +
-    `<div class="tablewrap"><table><thead><tr><th>Código</th><th>Eliminado el</th><th style="width:120px"></th></tr></thead><tbody>` +
+    `<div class="tablewrap"><table><thead><tr>${sth("del", "id", "Código")}${sth("del", "deletedAt", "Eliminado el")}<th></th></tr></thead><tbody>` +
     rows.map(s => `<tr><td><strong>${esc(s.id)}</strong></td><td>${when(s)}</td><td><button class="small" onclick="restoreStudent('${esc(s.id)}')">Recuperar</button></td></tr>`).join("") +
     `</tbody></table>${rows.length ? "" : '<div class="empty" style="padding:16px">No hay alumnos eliminados.</div>'}</div>` + pg;
 }
@@ -660,7 +688,7 @@ function renderLoans(){
 function scanScreen(title, text, kind, cb, back, label){
   stopScanner(); scanDone = false; window._cb = cb;
   $app.innerHTML = `<div class="bar"><button class="ghost" onclick="${back}">← Volver</button><h2>${title}</h2></div><div class="panel"><p style="margin-top:0">${text}</p>
-    <video id="cam" playsinline muted autoplay style="width:100%;max-width:480px;border-radius:8px;background:#000;display:block;margin:0 auto"></video>
+    <div id="camBox" class="camBox"><video id="cam" playsinline muted autoplay></video></div>
     <p class="empty" id="scanStatus">Abriendo cámara…</p>
     <form class="isbnform" onsubmit="event.preventDefault();window._cb(this.code.value)"><label>${label}<input name="code" required></label><button>Continuar</button></form></div>`;
   startScan(kind, cb);
@@ -762,10 +790,10 @@ async function renderHistory(){
   drawHistory();
 }
 function drawHistory(){
-  const q = histQ.toLowerCase(), list = histCache.filter(l => `${l.title} ${l.studentCode} ${l.isbn}`.toLowerCase().includes(q));
+  const q = histQ.toLowerCase(), list = sorted(histCache.filter(l => `${l.title} ${l.studentCode} ${l.isbn}`.toLowerCase().includes(q)), "hist", gLoan);
   const pages = Math.max(1, Math.ceil(list.length / PAGE30)); histPage = Math.min(histPage, pages - 1);
   const rows = list.slice(histPage * PAGE30, (histPage + 1) * PAGE30), pg = PAGER("setHistPage", histPage, pages);
-  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr><th style="width:32%">Libro</th><th style="width:15%">Alumno</th><th class="hm" style="width:17%">Préstamo</th><th style="width:17%">Devolución</th><th style="width:100px">Estado</th></tr></thead><tbody>` +
+  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr>${sth("hist", "title", "Libro")}${sth("hist", "studentCode", "Alumno")}${sth("hist", "loanDate", "Préstamo")}${sth("hist", "end", "Devolución")}${sth("hist", "status", "Estado")}</tr></thead><tbody>` +
     rows.map(l => { const t = loanTag(l); return `<tr><td><div class="ell">${esc(l.title || l.isbn)}</div></td><td>${esc(l.studentCode)}</td><td class="hm">${dt(l.loanDate)}</td><td>${dt(l.returnedAt || l.closedAt)}</td><td><span class="tag ${t[0]}">${t[1]}</span></td></tr>`; }).join("") +
     `</tbody></table>${rows.length ? "" : '<div class="empty" style="padding:16px">Todavía no hay préstamos registrados.</div>'}</div>` + pg;
 }
@@ -787,12 +815,12 @@ async function renderOut(){
   drawOut();
 }
 function drawOut(){
-  const q = outQ.toLowerCase(), list = outList.filter(l => `${l.title} ${l.studentCode} ${l.isbn}`.toLowerCase().includes(q));
+  const q = outQ.toLowerCase(), list = sorted(outList.filter(l => `${l.title} ${l.studentCode} ${l.isbn}`.toLowerCase().includes(q)), "out", gLoan);
   const pages = Math.max(1, Math.ceil(list.length / PAGE30)); outPage = Math.min(outPage, pages - 1);
   const rows = list.slice(outPage * PAGE30, (outPage + 1) * PAGE30), pg = PAGER("setOutPage", outPage, pages);
-  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr><th style="width:16%">Alumno</th><th style="width:34%">Libro</th><th class="hm" style="width:18%">Préstamo</th><th style="width:20%">Fecha límite</th>${cur.admin ? '<th style="width:84px"></th>' : ""}</tr></thead><tbody>` +
+  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr>${sth("out", "studentCode", "Alumno")}${sth("out", "title", "Libro")}${sth("out", "loanDate", "Préstamo")}${sth("out", "returnDate", "Fecha límite")}${cur.admin ? "<th></th>" : ""}</tr></thead><tbody>` +
     rows.map(l => `<tr><td><strong>${esc(l.studentCode)}</strong></td><td><div class="ell">${esc(l.title || l.isbn)}</div></td><td class="hm">${dt(l.loanDate)}</td><td class="${overdue(l) ? "late" : ""}">${dt(l.returnDate)}</td>
-      ${cur.admin ? `<td><button class="small danger" title="Cerrar préstamo sin devolución" aria-label="Cerrar préstamo sin devolución" onclick="closeLoan('${esc(l.id)}')">Cerrar</button></td>` : ""}</tr>`).join("") +
+      ${cur.admin ? `<td><button class="small danger" title="Marcar como libro perdido y cerrar el préstamo" aria-label="Libro perdido" onclick="closeLoan('${esc(l.id)}')">Libro perdido</button></td>` : ""}</tr>`).join("") +
     `</tbody></table>${rows.length ? "" : '<div class="empty" style="padding:16px">No hay libros fuera del centro.</div>'}</div>` + pg;
 }
 function setOutPage(p){ outPage = p; drawOut(); document.getElementById("tbl").scrollIntoView({ block: "start" }); }
@@ -814,6 +842,43 @@ async function closeLoan(id){
     toast("Préstamo cerrado"); renderOut();
   }catch(e){ fail(e); }
 }
+// ---------- Mensajes de error de inicio de sesión ----------
+const AUTH_MSG = {
+  "auth/wrong-password": "Usuario o contraseña incorrectos.", "auth/user-not-found": "Usuario o contraseña incorrectos.",
+  "auth/invalid-credential": "Usuario o contraseña incorrectos.", "auth/invalid-login-credentials": "Usuario o contraseña incorrectos.",
+  "auth/invalid-email": "Usuario o contraseña incorrectos.", "auth/missing-password": "Usuario o contraseña incorrectos.",
+  "auth/too-many-requests": "Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo.",
+  "auth/email-already-in-use": "Ya existe una cuenta con ese correo. Prueba a iniciar sesión.",
+  "auth/weak-password": "La contraseña es demasiado débil (mínimo 6 caracteres).",
+  "auth/network-request-failed": "No hay conexión con el servidor. Revisa tu internet.",
+  "auth/user-disabled": "Esta cuenta está desactivada.",
+  "auth/unauthorized-domain": "Este dominio no está autorizado en Firebase (Authentication → Configuración → Dominios autorizados)."
+};
+function authFail(e){
+  console.error(e);
+  if(e.code === "auth/popup-closed-by-user" || e.code === "auth/cancelled-popup-request") return;
+  toast(AUTH_MSG[e.code] || "No se pudo iniciar sesión. Inténtalo de nuevo.", true);
+}
+
+// ---------- Ordenar columnas (clic en el encabezado, como en el Explorador de Windows) ----------
+const sortState = { books: { k: "title", d: 1 }, students: { k: "id", d: 1 }, hist: { k: "loanDate", d: -1 }, out: { k: "studentCode", d: 1 }, del: { k: "id", d: 1 } };
+const sortRedraw = {
+  books: () => { bookPage = 0; drawBooks(); }, students: () => { stuPage = 0; drawStudents(); },
+  hist: () => { histPage = 0; drawHistory(); }, out: () => { outPage = 0; drawOut(); }, del: () => { delPage = 0; renderDeleted(); }
+};
+function sortBy(t, k){ const st = sortState[t]; st.d = st.k === k ? -st.d : 1; st.k = k; sortRedraw[t](); }
+const sth = (t, k, label) => {
+  const st = sortState[t], on = st.k === k;
+  return `<th class="sortable" tabindex="0" aria-sort="${on ? (st.d > 0 ? "ascending" : "descending") : "none"}" onclick="sortBy('${t}','${k}')" onkeydown="if(event.key==='Enter')sortBy('${t}','${k}')">${label}<span class="arr">${on ? (st.d > 0 ? " ▲" : " ▼") : ""}</span></th>`;
+};
+const cmpv = (a, b) => (typeof a === "number" && typeof b === "number") ? a - b : String(a ?? "").localeCompare(String(b ?? ""), "es", { numeric: true, sensitivity: "base" });
+const sorted = (list, t, get) => { const st = sortState[t]; return [...list].sort((a, b) => st.d * cmpv(get(a, st.k), get(b, st.k))); };
+const secs = t => (t && t.seconds) || 0;
+const gBook = (b, k) => k === "isbn" ? (b.isbn || b.id) : k === "avail" ? (b.availableCopies || 0) : (b[k] || "");
+const gStu = s => s.id;
+const gLoan = (l, k) => k === "title" ? (l.title || l.isbn || "") : k === "loanDate" ? secs(l.loanDate) : k === "returnDate" ? secs(l.returnDate)
+  : k === "end" ? secs(l.returnedAt || l.closedAt) : k === "status" ? loanTag(l)[1] : (l[k] || "");
+const gDel = (s, k) => k === "deletedAt" ? secs(s.deletedAt) : s.id;
 </script>
 </body>
 </html>
