@@ -15,7 +15,7 @@ header.top p{margin:6px 0 0;color:var(--muted)}
 .user{display:flex;justify-content:flex-end;align-items:center;gap:8px;font-size:.85rem;color:var(--muted);min-height:36px}
 button{font:inherit;border:0;border-radius:8px;padding:12px 16px;background:var(--blue);color:#fff;cursor:pointer}
 button:hover{background:var(--blue-d)}
-button:focus-visible,input:focus-visible{outline:3px solid #1a73e8;outline-offset:2px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #1a73e8;outline-offset:2px}
 button.ghost{background:transparent;color:var(--blue-d);padding:8px 10px}
 button.ghost:hover{background:#e8f0fe}
 button.danger{background:var(--red)}
@@ -24,7 +24,7 @@ button.small{padding:6px 12px;font-size:.9rem}
 .panel h3{margin:0 0 12px;font-size:1.05rem}
 form{display:grid;gap:12px}
 label{display:grid;gap:4px;font-size:.85rem;color:var(--muted)}
-input{font:inherit;padding:10px;border:1px solid var(--line);border-radius:6px;width:100%;color:var(--ink)}
+input,select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:6px;width:100%;color:var(--ink);background:#fff}
 .row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}
 .row:last-child{border-bottom:0}
 .row .info{flex:1;min-width:0}
@@ -133,7 +133,7 @@ button{
 }
 button:hover{background:var(--blue-d);transform:translateY(-1px);box-shadow:0 5px 12px rgba(23,107,104,.14)}
 button:active{transform:translateY(0)}
-button:focus-visible,input:focus-visible{outline:3px solid rgba(23,107,104,.25);outline-offset:2px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid rgba(23,107,104,.25);outline-offset:2px}
 button.ghost{background:transparent;color:var(--blue);box-shadow:none}
 button.ghost:hover{background:var(--accent-soft);box-shadow:none}
 button.danger{background:#b54745;box-shadow:none}
@@ -716,7 +716,7 @@ function editBook(id){
   const used = b.activeLoans || 0, { o, close } = modal(`<h3>Editar libro</h3><form><label>ISBN<input value="${esc(b.isbn || b.id)}" disabled></label>
     <label>Título<input name="title" required value="${esc(b.title)}"></label><label>Autor<input name="author" required value="${esc(b.author)}"></label>
     <label>Editorial<input name="publisher" value="${esc(b.publisher)}"></label>
-    <label>Género<input name="genre" value="${esc(b.genre)}"></label><label>Edad recomendada<input name="age" value="${esc(b.age)}" placeholder="Ej.: 6-8"></label>
+    ${genreField(b.genre)}${ageField(b.age)}
     <label>Ejemplares totales<input name="total" type="number" min="${Math.max(1, used)}" required value="${b.totalCopies ?? 1}"></label><button>Guardar cambios</button></form>`);
   o.querySelector("form").onsubmit = async e => {
     e.preventDefault(); const f = e.target, t = parseInt(f.total.value, 10);
@@ -746,6 +746,36 @@ function stopScanner(){
   if(quaggaOn){ try{ Quagga.offDetected(quaggaFn); Quagga.stop(); }catch(e){} quaggaOn = false; }
   if(zxReader){ try{ zxReader.reset(); }catch(e){} zxReader = null; }
   if(camStream){ camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  const v = document.getElementById("cam"); if(v){ try{ v.pause(); v.srcObject = null; }catch(e){} }
+}
+// La cámara solo permanece activa mientras la pantalla del escáner está visible.
+document.addEventListener("visibilitychange", () => { if(document.hidden) stopScanner(); });
+window.addEventListener("pagehide", stopScanner);
+const BOOK_GENRES = ["Narrativa", "Poesía", "Teatro", "Cómic", "Álbum ilustrado", "Fantasía", "Ciencia ficción", "Aventura", "Misterio", "Terror", "Romántica", "Histórica", "Biografía", "Ensayo", "Divulgación", "Informativo", "Beste bat"];
+const BOOK_AGES = ["HH", "LH 1-2", "LH 3-4", "LH 5-6", "DBH1-2", "DBH 3-4", "Helduak"];
+function bookSelect(name, values, selected=""){
+  const val = String(selected || "");
+  const all = [...values];
+  if(val && !all.includes(val)) all.push(val); // conserva valores antiguos o importados
+  return `<select name="${name}"><option value="" ${!val ? "selected" : ""}>${trs("Seleccionar…")}</option>${all.map(v => `<option value="${esc(v)}" ${v===val?"selected":""}>${trs(v)}</option>`).join("")}</select>`;
+}
+function genreField(selected=""){ return `<label>Género${bookSelect("genre", BOOK_GENRES, selected)}</label>`; }
+function ageField(selected=""){ return `<label>Edad recomendada${bookSelect("age", BOOK_AGES, selected)}</label>`; }
+function inferBookGenre(categories=[]){
+  const c = categories.join(" ").toLowerCase();
+  const rules = [[/comic|graphic novel|manga/,"Cómic"],[/poetry|poesía/,"Poesía"],[/drama|theater|teatro/,"Teatro"],[/fantasy|fantasía/,"Fantasía"],[/science fiction|sci-fi|ciencia ficción/,"Ciencia ficción"],[/mystery|detective|thriller|misterio/,"Misterio"],[/horror|terror/,"Terror"],[/romance|romántica/,"Romántica"],[/history|historical|historia/,"Histórica"],[/biograph|autobiograph|biografía/,"Biografía"],[/essay|ensayo/,"Ensayo"],[/adventure|aventura/,"Aventura"],[/picture book|illustrated|álbum ilustrado/,"Álbum ilustrado"],[/juvenile fiction|fiction|ficción|literature|literatura/,"Narrativa"],[/science|education|reference|informational|nonfiction|divulgación/,"Divulgación"]];
+  return (rules.find(([re])=>re.test(c))||[])[1] || "";
+}
+function inferBookAge(categories=[]){
+  const c = categories.join(" ").toLowerCase();
+  if(/early childhood|preschool|pre-school|kindergarten|haur hezkuntza/.test(c)) return "HH";
+  if(/ages? 6\s*[-–]\s*8|grades? 1\s*[-–]\s*2|lh 1\s*[-–]\s*2/.test(c)) return "LH 1-2";
+  if(/ages? 8\s*[-–]\s*10|grades? 3\s*[-–]\s*4|lh 3\s*[-–]\s*4/.test(c)) return "LH 3-4";
+  if(/ages? 10\s*[-–]\s*12|grades? 5\s*[-–]\s*6|lh 5\s*[-–]\s*6/.test(c)) return "LH 5-6";
+  if(/young adult|teen|adolescent|dbh 1\s*[-–]\s*2/.test(c)) return "DBH1-2";
+  if(/older teen|upper secondary|dbh 3\s*[-–]\s*4/.test(c)) return "DBH 3-4";
+  if(/adult|hel duak/.test(c)) return "Helduak";
+  return ""; // no se inventa una edad si la fuente no la indica
 }
 const addBar = t => `<div class="bar"><button class="ghost" onclick="renderAddBook()">← Volver</button><h2>${t}</h2></div>`;
 function renderAddBook(){
@@ -757,7 +787,7 @@ function renderManual(isbn = ""){
   stopScanner();
   $app.innerHTML = addBar("Añadir manualmente") + `<div class="panel"><form onsubmit="addBook(event)"><label>ISBN<input name="isbn" required value="${esc(isbn)}"></label>
     <label>Título<input name="title" required></label><label>Autor<input name="author" required></label><label>Editorial<input name="publisher"></label>
-    <label>Género<input name="genre" required></label><label>Edad recomendada<input name="age" required placeholder="Ej.: 6-8"></label>
+    ${genreField()}${ageField()}
     <label>Ejemplares<input name="copies" type="number" min="1" value="1" required></label><button>Guardar libro</button></form></div>`;
 }
 async function addBook(e){
@@ -843,14 +873,18 @@ async function startScan(kind, cb){
 async function lookupIsbn(isbn){ // consulta varias fuentes y rellena lo que falte con la otra
   const fromGoogle = fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`).then(r => r.json()).then(j => {
     const v = j.items && j.items[0] && j.items[0].volumeInfo;
-    return v && { title: [v.title, v.subtitle].filter(Boolean).join(": "), author: (v.authors || []).join(", "), publisher: v.publisher || "", cover: ((v.imageLinks && v.imageLinks.thumbnail) || "").replace("http:", "https:") };
+    if(!v) return null;
+    const categories = v.categories || [];
+    return { title: [v.title, v.subtitle].filter(Boolean).join(": "), author: (v.authors || []).join(", "), publisher: v.publisher || "", cover: ((v.imageLinks && v.imageLinks.thumbnail) || "").replace("http:", "https:"), genre: inferBookGenre(categories), age: inferBookAge(categories) };
   }).catch(() => null);
   const fromOpenLibrary = fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`).then(r => r.json()).then(j => {
     const v = j["ISBN:" + isbn];
-    return v && { title: [v.title, v.subtitle].filter(Boolean).join(": "), author: (v.authors || []).map(a => a.name).join(", "), publisher: (v.publishers || []).map(x => x.name).join(", "), cover: (v.cover && v.cover.medium) || "" };
+    if(!v) return null;
+    const categories = (v.subjects || []).map(x => typeof x === "string" ? x : (x.name || ""));
+    return { title: [v.title, v.subtitle].filter(Boolean).join(": "), author: (v.authors || []).map(a => a.name).join(", "), publisher: (v.publishers || []).map(x => x.name).join(", "), cover: (v.cover && v.cover.medium) || "", genre: inferBookGenre(categories), age: inferBookAge(categories) };
   }).catch(() => null);
   const src = await Promise.all([fromGoogle, fromOpenLibrary]), m = {};
-  for(const k of ["title", "author", "publisher", "cover"]) m[k] = (src.find(x => x && x[k]) || {})[k] || "";
+  for(const k of ["title", "author", "publisher", "cover", "genre", "age"]) m[k] = (src.find(x => x && x[k]) || {})[k] || "";
   return m.title ? m : null;
 }
 async function onIsbn(code){
@@ -871,7 +905,7 @@ async function onIsbn(code){
   $app.innerHTML = addBar("Añadir con escáner") + `<div class="panel"><h3>¿Es este el libro que quieres añadir?</h3>
     <div class="bookbox">${info.cover ? `<img src="${esc(info.cover)}" alt="Portada">` : ""}<div><p><strong>${esc(info.title)}</strong></p><p>${esc(info.author) || "Autor desconocido"}</p><p>${esc(info.publisher)}</p><p>ISBN ${esc(isbn)}</p></div></div>
     ${exists ? `<p class="empty">Este libro ya está en tu biblioteca (${total} ejemplar${total === 1 ? "" : "es"}). Si aceptas, se sumarán los ejemplares indicados.</p>` : ""}
-    <form onsubmit="saveScanned(event)">${exists ? "" : `<label>Género<input name="genre" required></label><label>Edad recomendada<input name="age" required placeholder="Ej.: 6-8"></label>`}<label>Ejemplares a añadir<input name="copies" type="number" min="1" value="1" required></label>
+    <form onsubmit="saveScanned(event)">${exists ? "" : `${genreField(info.genre)}${ageField(info.age)}`}<label>Ejemplares a añadir<input name="copies" type="number" min="1" value="1" required></label>
     <div class="tools"><button>Sí, añadir</button><button type="button" class="ghost" onclick="renderScan()">No, escanear otro</button></div></form></div>`;
 }
 async function saveScanned(e){
@@ -1052,7 +1086,7 @@ async function offerAddAndLend(isbn){
     <div class="bookbox">${b.cover ? `<img src="${esc(b.cover)}" alt="Portada">` : ""}<div><p>ISBN ${esc(isbn)}</p><p class="empty">${info ? "Revisa los datos y corrígelos si hace falta." : "No he encontrado datos de este libro. Rellénalos tú."}</p></div></div>
     <form onsubmit="addAndContinue(event)"><label>Título<input name="title" required value="${esc(b.title)}"></label><label>Autor<input name="author" required value="${esc(b.author)}"></label>
     <label>Editorial<input name="publisher" value="${esc(b.publisher)}"></label>
-    <label>Género<input name="genre" required></label><label>Edad recomendada<input name="age" required placeholder="Ej.: 6-8"></label>
+    ${genreField(b.genre)}${ageField(b.age)}
     <div class="tools"><button>Sí, incorporar y continuar</button><button type="button" class="ghost" onclick="loanIsbnScreen()">No, escanear otro</button></div></form></div>`;
 }
 async function addAndContinue(e){
@@ -1083,6 +1117,7 @@ async function onLoanStudent(text){
   }catch(e){ console.error(e); stopScanner(); loanResult(false, e.message || "No se pudo registrar"); }
 }
 function loanResult(ok, text){
+  stopScanner();
   const lend = loanMode === "lend";
   $app.innerHTML = `<div class="bar"><h2>${loanHead()}</h2></div>${stepper(ok ? 5 : 3)}<div class="banner ${ok ? "" : "err"}"><span>${ok ? "✅ " : ""}${esc(text)}</span></div>
     <nav class="menu"><button onclick="${ok ? "loanIsbnScreen()" : "loanStudentScreen()"}">${ok ? (lend ? "Prestar otro libro" : "Devolver otro libro") : "Escanear otro alumno"}</button><button class="ghost" onclick="renderLoans()">Volver</button></nav>`;
@@ -1252,7 +1287,7 @@ const EU = {
 "Eliminar":"Ezabatu","Cambio guardado":"Aldaketa gorde da","Persona eliminada":"Pertsona ezabatu da","¿Seguro que quieres quitar a esta persona del centro?":"Ziur zaude pertsona hau ikastetxetik kendu nahi duzula?",
 "Editar libro":"Editatu liburua","Guardar cambios":"Gorde aldaketak","Centro actualizado.":"Ikastetxea eguneratu da.","Centro eliminado":"Ikastetxea ezabatu da",
 "Si quieres eliminar el centro, escribe ELIMINAR en la siguiente casilla para borrarlo.":"Ikastetxea ezabatu nahi baduzu, idatzi EZABATU hurrengo laukian ezabatzeko.","Cerrar":"Itxi","Escribe ELIMINAR":"Idatzi EZABATU",
-"Cargando libros…":"Liburuak kargatzen…","Incorporar libro":"Liburua gehitu","Exportar biblioteca a Excel":"Esportatu liburutegia Excelera","Buscar por título, autor, género o ISBN":"Bilatu izenburua, egilea, generoa edo ISBN bidez","Género":"Generoa","Edad":"Adina","Edad recomendada":"Gomendatutako adina","Ej.: 6-8":"Adib.: 6-8",
+"Narrativa":"Narrazioa","Poesía":"Poesia","Teatro":"Antzerkia","Cómic":"Komikia","Álbum ilustrado":"Album ilustratua","Fantasía":"Fantasia","Ciencia ficción":"Zientzia-fikzioa","Aventura":"Abentura","Misterio":"Misterioa","Terror":"Beldurra","Romántica":"Erromantikoa","Histórica":"Historikoa","Biografía":"Biografia","Ensayo":"Saiakera","Divulgación":"Dibulgazioa","Informativo":"Informazio-liburua","Beste bat":"Beste bat","HH":"HH","LH 1-2":"LH 1-2","LH 3-4":"LH 3-4","LH 5-6":"LH 5-6","DBH1-2":"DBH1-2","DBH 3-4":"DBH 3-4","Helduak":"Helduak","Cargando libros…":"Liburuak kargatzen…","Incorporar libro":"Liburua gehitu","Exportar biblioteca a Excel":"Esportatu liburutegia Excelera","Buscar por título, autor, género o ISBN":"Bilatu izenburua, egilea, generoa edo ISBN bidez","Género":"Generoa","Edad":"Adina","Seleccionar…":"Aukeratu…","Edad recomendada":"Gomendatutako adina","Ej.: 6-8":"Adib.: 6-8",
 "Título":"Izenburua","Autor":"Egilea","Editorial":"Argitaletxea","ISBN":"ISBN","Disponibles":"Eskuragarri","Ningún libro coincide con la búsqueda.":"Ez dago bilaketarekin bat datorren libururik.",
 "Todavía no hay libros.":"Oraindik ez dago libururik.","Eliminar libro":"Ezabatu liburua","Ejemplares totales":"Ale guztiak","Libro actualizado.":"Liburua eguneratu da.",
 "No se puede eliminar: tiene préstamos activos":"Ezin da ezabatu: maileguak aktiboak ditu","Libro eliminado.":"Liburua ezabatu da.","Página anterior":"Aurreko orrialdea","Página siguiente":"Hurrengo orrialdea",
