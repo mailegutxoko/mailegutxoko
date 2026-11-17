@@ -279,7 +279,7 @@ header.top p{margin:0 0 0 3px}
   <div id="app"><div class="empty">Cargando…</div></div>
 </main>
 <div id="msg" role="status"></div>
-
+  
 <script type="module">
   // Import the functions you need from the SDKs you need
   import { initializeApp } from "https://www.gstatic.com/firebasejs/13.3.0/firebase-app.js";
@@ -299,7 +299,7 @@ header.top p{margin:0 0 0 3px}
   // Initialize Firebase
   const app = initializeApp(firebaseConfig);
 </script>
-  
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-auth-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-firestore-compat.min.js"></script>
@@ -1078,30 +1078,9 @@ async function onLoanIsbn(code){
   }
   loanBook = { id: d.id, ...d.data() };
   if(lend && !(loanBook.availableCopies > 0)){
-    // El ISBN ya existe, pero todos sus ejemplares están prestados:
-    // se incorpora automáticamente un ejemplar adicional antes de continuar.
-    try{
-      const ref = db.doc(`schools/${cur.sid}/books/${loanBook.id}`);
-      await db.runTransaction(async tx => {
-        const snap = await tx.get(ref);
-        if(!snap.exists) throw new Error("El libro ya no está en la biblioteca");
-        const data = snap.data();
-        tx.update(ref, {
-          totalCopies: (Number(data.totalCopies) || 0) + 1,
-          availableCopies: (Number(data.availableCopies) || 0) + 1,
-          available: true
-        });
-        loanBook = { id: snap.id, ...data,
-          totalCopies: (Number(data.totalCopies) || 0) + 1,
-          availableCopies: (Number(data.availableCopies) || 0) + 1,
-          available: true
-        };
-      });
-      toast("Se ha añadido un ejemplar nuevo a la biblioteca.");
-    }catch(err){
-      fail(err);
-      return loanIsbnScreen();
-    }
+    // Se marca que podría ser necesario un ejemplar adicional, pero no se
+    // modifica el inventario hasta que el préstamo se confirme con un alumno.
+    loanBook.pendingExtraCopy = true;
   }
   $app.innerHTML = bar + `<div class="panel"><h3>${lend ? "¿Es este el libro que quieres prestar?" : "¿Es este el libro que quieres devolver?"}</h3>
     <div class="bookbox">${bookThumb(loanBook.isbn || loanBook.id, loanBook.cover, loanBook.title)}<div><p><strong>${esc(loanBook.title)}</strong></p><p>${esc(loanBook.author)}</p><p>${esc(loanBook.publisher)}</p><p>ISBN ${esc(isbn)}</p>
@@ -1123,14 +1102,23 @@ async function offerAddAndLend(isbn){
 }
 async function addAndContinue(e){
   e.preventDefault();
-  const f = e.target, isbn = pendingIsbn, ref = db.doc(`schools/${cur.sid}/books/${isbn}`);
-  try{
-    if(!(await ref.get()).exists)   // por si otra persona lo ha incorporado mientras tanto
-      await ref.set({ isbn, title: f.title.value.trim(), author: f.author.value.trim(), publisher: f.publisher.value.trim(), genre: f.genre.value.trim(), age: f.age.value.trim(), totalCopies: 1, availableCopies: 1, activeLoans: 0, available: true, createdAt: FV.serverTimestamp() });
-    const d = await ref.get(); loanBook = { id: d.id, ...d.data() };
-    toast("Libro incorporado a la biblioteca.");
-    loanStudentScreen();   // sigue el préstamo: escanear el QR del alumno
-  }catch(err){ fail(err); }
+  const f = e.target, isbn = pendingIsbn;
+  // Guardamos los datos provisionalmente. No se crea el libro en Firestore
+  // hasta que el préstamo se confirme correctamente con un alumno.
+  loanBook = {
+    id: isbn, isbn,
+    title: f.title.value.trim(),
+    author: f.author.value.trim(),
+    publisher: f.publisher.value.trim(),
+    genre: f.genre.value.trim(),
+    age: f.age.value.trim(),
+    totalCopies: 0,
+    availableCopies: 0,
+    activeLoans: 0,
+    available: false,
+    pendingNewBook: true
+  };
+  loanStudentScreen();
 }
 async function onLoanStudent(text){
   if(scanDone) return;
@@ -1155,17 +1143,76 @@ function loanResult(ok, text){
     <nav class="menu"><button onclick="${ok ? "loanIsbnScreen()" : "loanStudentScreen()"}">${ok ? (lend ? "Prestar otro libro" : "Devolver otro libro") : "Escanear otro alumno"}</button><button class="ghost" onclick="renderLoans()">Volver</button></nav>`;
 }
 async function doLend(code){
-  const b = loanBook, bookRef = db.doc(`schools/${cur.sid}/books/${b.id}`), loanRef = db.collection(`schools/${cur.sid}/loans`).doc();
-  const used = new Set((await db.collection(`schools/${cur.sid}/loans`).where("isbn", "==", b.id).get()).docs.map(d => d.data()).filter(l => l.status === "active").map(l => l.copyNumber));
-  let copy = 1; while(used.has(copy)) copy++;   // primer número de ejemplar libre
+  const b = loanBook;
+  if(!b) throw new Error("No hay ningún libro seleccionado");
+  const bookRef = db.doc(`schools/${cur.sid}/books/${b.id}`);
+  const loanRef = db.collection(`schools/${cur.sid}/loans`).doc();
+
   await db.runTransaction(async tx => {
-    const bs = await tx.get(bookRef), bk = bs.data();
-    if(!bs.exists || !(bk.availableCopies > 0)) throw new Error("No quedan ejemplares disponibles");
-    const left = bk.availableCopies - 1;
-    tx.update(bookRef, { availableCopies: left, activeLoans: (bk.activeLoans || 0) + 1, available: left > 0 });
-    tx.set(loanRef, { isbn: b.id, title: b.title || "", copyNumber: copy, studentCode: code, status: "active", loanDate: FV.serverTimestamp(), createdBy: me.uid });
+    const bs = await tx.get(bookRef);
+    const exists = bs.exists;
+    const bk = exists ? bs.data() : null;
+
+    // Un ISBN recién escaneado se crea únicamente dentro de la misma
+    // transacción que registra el préstamo del alumno.
+    if(!exists){
+      if(!b.pendingNewBook) throw new Error("El libro ya no está en la biblioteca");
+      tx.set(bookRef, {
+        isbn: b.isbn || b.id,
+        title: b.title || "",
+        author: b.author || "",
+        publisher: b.publisher || "",
+        genre: b.genre || "",
+        age: b.age || "",
+        totalCopies: 1,
+        availableCopies: 0,
+        activeLoans: 1,
+        available: false,
+        createdAt: FV.serverTimestamp()
+      });
+      tx.set(loanRef, {
+        isbn: b.id, title: b.title || "", copyNumber: 1,
+        studentCode: code, status: "active",
+        loanDate: FV.serverTimestamp(), createdBy: me.uid
+      });
+      return;
+    }
+
+    // Si ya no quedan ejemplares, se incorpora uno adicional SOLO ahora,
+    // al confirmar el préstamo con un alumno. El alta y el préstamo son atómicos.
+    const total = Number(bk.totalCopies) || 0;
+    const available = Number(bk.availableCopies) || 0;
+    const activeLoans = Number(bk.activeLoans) || 0;
+    const addCopy = available <= 0;
+    const nextTotal = total + (addCopy ? 1 : 0);
+    const nextAvailable = available + (addCopy ? 1 : 0) - 1;
+
+    const loansSnap = await db.collection(`schools/${cur.sid}/loans`)
+      .where("isbn", "==", b.id).get();
+    const used = new Set(loansSnap.docs
+      .map(d => d.data())
+      .filter(l => l.status === "active")
+      .map(l => l.copyNumber));
+    let copy = 1;
+    while(used.has(copy)) copy++;
+
+    tx.update(bookRef, {
+      totalCopies: nextTotal,
+      availableCopies: nextAvailable,
+      activeLoans: activeLoans + 1,
+      available: nextAvailable > 0
+    });
+    tx.set(loanRef, {
+      isbn: b.id, title: bk.title || b.title || "",
+      copyNumber: copy, studentCode: code, status: "active",
+      loanDate: FV.serverTimestamp(), createdBy: me.uid
+    });
   });
-  return `Se ha registrado el préstamo del libro «${b.title}» al alumno ${code}.`;
+
+  const title = b.title || "libro";
+  if(b.pendingNewBook || b.pendingExtraCopy)
+    toast(b.pendingNewBook ? "Libro incorporado al confirmar el préstamo." : "Ejemplar añadido al confirmar el préstamo.");
+  return `Se ha registrado el préstamo del libro «${title}» al alumno ${code}.`;
 }
 async function doReturn(code){
   const b = loanBook, bookRef = db.doc(`schools/${cur.sid}/books/${b.id}`);
