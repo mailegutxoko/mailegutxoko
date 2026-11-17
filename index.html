@@ -259,6 +259,15 @@ header.top p{margin:0 0 0 3px}
 .camBox{width:min(100%,420px)!important;height:min(34vh,240px);min-height:150px;max-height:240px!important;margin:0 auto;}
 .camBox video,.camBox canvas,.camBox .videoWrapper{width:100%!important;height:100%!important;max-height:240px!important;object-fit:contain;}
 .book-thumb{flex:none}
+/* Portadas ausentes: rectángulo vacío, sin icono de imagen rota */
+.book-thumb-empty{display:inline-block;flex:none;width:42px;height:58px;border-radius:5px;background:#eef2f3;border:1px solid #e2e8e9;vertical-align:middle}
+/* El contenido del diálogo de edición puede desplazarse también en móviles */
+.overlay{overflow-y:auto;align-items:center;-webkit-overflow-scrolling:touch}
+.dialog{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+@media(max-width:640px){
+  .overlay{display:flex;align-items:flex-start;justify-content:center;padding:12px}
+  .dialog{margin:auto 0;max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);width:100%;touch-action:pan-y}
+}
 
 </style>
 
@@ -683,8 +692,9 @@ function bookCoverUrl(isbn, cover){
 }
 function bookThumb(isbn, cover, title){
   const src = bookCoverUrl(isbn, cover);
-  const fallback = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 42 58'%3E%3Crect width='42' height='58' rx='4' fill='%23e8eeee'/%3E%3Cpath d='M11 12h20v34H11zM16 19h10M16 24h10M16 29h7' fill='none' stroke='%23839a9b' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E";
-  return `<img class="book-thumb" src="${esc(src || fallback)}" alt="Portada de ${esc(title || "libro")}" loading="lazy" onerror="this.onerror=null;this.src='${fallback}'">`;
+  const alt = `Portada de ${esc(title || "libro")}`;
+  if(!src) return `<span class="book-thumb-empty" role="img" aria-label="${alt}"></span>`;
+  return `<img class="book-thumb" src="${esc(src)}" alt="${alt}" loading="lazy" onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('span'),{className:'book-thumb-empty',role:'img','aria-label':this.alt}))">`;
 }
 // ---------- Libros ----------
 let booksCache = [], bookQ = "", bookPage = 0;
@@ -1068,8 +1078,30 @@ async function onLoanIsbn(code){
   }
   loanBook = { id: d.id, ...d.data() };
   if(lend && !(loanBook.availableCopies > 0)){
-    $app.innerHTML = bar + `<div class="panel"><p style="margin-top:0">No quedan ejemplares disponibles de «${esc(loanBook.title)}».</p><button onclick="loanIsbnScreen()">Escanear otro</button></div>`;
-    return;
+    // El ISBN ya existe, pero todos sus ejemplares están prestados:
+    // se incorpora automáticamente un ejemplar adicional antes de continuar.
+    try{
+      const ref = db.doc(`schools/${cur.sid}/books/${loanBook.id}`);
+      await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        if(!snap.exists) throw new Error("El libro ya no está en la biblioteca");
+        const data = snap.data();
+        tx.update(ref, {
+          totalCopies: (Number(data.totalCopies) || 0) + 1,
+          availableCopies: (Number(data.availableCopies) || 0) + 1,
+          available: true
+        });
+        loanBook = { id: snap.id, ...data,
+          totalCopies: (Number(data.totalCopies) || 0) + 1,
+          availableCopies: (Number(data.availableCopies) || 0) + 1,
+          available: true
+        };
+      });
+      toast("Se ha añadido un ejemplar nuevo a la biblioteca.");
+    }catch(err){
+      fail(err);
+      return loanIsbnScreen();
+    }
   }
   $app.innerHTML = bar + `<div class="panel"><h3>${lend ? "¿Es este el libro que quieres prestar?" : "¿Es este el libro que quieres devolver?"}</h3>
     <div class="bookbox">${bookThumb(loanBook.isbn || loanBook.id, loanBook.cover, loanBook.title)}<div><p><strong>${esc(loanBook.title)}</strong></p><p>${esc(loanBook.author)}</p><p>${esc(loanBook.publisher)}</p><p>ISBN ${esc(isbn)}</p>
