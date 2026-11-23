@@ -294,6 +294,11 @@ header.top .brand-logo{cursor:pointer}
 .lost-note-cell{white-space:normal;min-width:180px;max-width:320px}
 textarea{font:inherit;padding:11px 12px;border:1px solid #d9e2e5;border-radius:9px;min-height:100px;resize:vertical;width:100%;color:var(--ink)}
 @media(max-width:700px){.site-footer{padding:14px;gap:10px}.footer-partner img{width:38px;height:32px}.catalog-search .catalog-query-row{align-items:stretch;flex-direction:column}.brand-home p{font-size:.78rem}}
+
+/* Prestar (flecha que sale) y Devolver (flecha que entra) */
+.menu.loanmenu button:nth-child(1):before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23176b68' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 15V4M8 8l4-4 4 4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3'/%3E%3C/svg%3E")}
+.menu.loanmenu button:nth-child(2):before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234b67a1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11M8 11l4 4 4-4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3'/%3E%3C/svg%3E")}
+.menu.loanmenu button:after{content:""}
 </style>
 
 </head>
@@ -326,7 +331,6 @@ textarea{font:inherit;padding:11px 12px;border:1px solid #d9e2e5;border-radius:9
   // Initialize Firebase
   const app = initializeApp(firebaseConfig);
 </script>
-
   
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-auth-compat.min.js"></script>
@@ -458,16 +462,43 @@ async function checkVerified(silent){
 }
 
 // ---------- Lista de centros ----------
+const CH_ST = { active: ["", "Activo"], pending: ["wait", "Pendiente de aprobación"], rejected: ["off", "Rechazado"] };
+let centQ = "", centPage = 0, joinQ = "";
+const CENT_PER_PAGE = 20;
+function chooserRow(r){
+  const t = CH_ST[r.status] || CH_ST.pending;
+  return `<div class="row"><div class="info"><strong>${esc(r.schoolName)}</strong><small>${r.role === "admin" ? "Administrador" : "Usuario"} · <span class="tag ${t[0]}">${t[1]}</span></small></div>
+    <div class="acts">${r.status === "active" ? `<button class="small" onclick="enterSchool('${r.sid}')">Entrar</button>${!isSuper ? `<button class="small danger" onclick="askLeaveSchool('${r.sid}', '${esc(r.schoolName)}')">Borrar</button>` : ""}` : ""}${isSuper ? `<button class="small" aria-label="Editar centro" onclick="editSchool('${r.sid}')">${PENCIL}</button><button class="small danger" aria-label="Eliminar centro" onclick="askDelete('${r.sid}')">×</button>` : ""}</div></div>`;
+}
+function drawChooserList(){   // solo superadministrador: buscador y páginas de 20 centros
+  const box = document.getElementById("schoolList"); if(!box) return;
+  const q = centQ.toLowerCase().trim(), all = window.rowsCache || [];
+  const list = all.filter(r => `${r.schoolName} ${r.centerCode}`.toLowerCase().includes(q));
+  const pages = Math.max(1, Math.ceil(list.length / CENT_PER_PAGE)); centPage = Math.min(centPage, pages - 1);
+  const rows = list.slice(centPage * CENT_PER_PAGE, (centPage + 1) * CENT_PER_PAGE), pg = PAGER("setCentPage", centPage, pages);
+  box.innerHTML = pg + (rows.map(chooserRow).join("") || `<div class="empty">${all.length ? "Ningún centro coincide con la búsqueda." : "Todavía no hay centros aprobados."}</div>`) + pg;
+}
+function setCentPage(p){ centPage = p; drawChooserList(); }
+async function hideRejected(id){   // quita de tu lista un registro rechazado (el historial del superadministrador se conserva)
+  try{ await db.doc("schools/" + id).update({ hiddenByOwner: true }); renderChooser(); }catch(e){ fail(e); }
+}
 async function renderChooser(){
   cur = null; stopScanner(); localStorage.removeItem("school_" + me.uid);
   const fl = flashHtml();
   $app.innerHTML = fl + loading("Cargando tus centros…");
-  let rows = [], owned = [], pending = [], alerts = [];
+  let rows = [], owned = [], pending = [], alerts = [], noAdmin = [];
   try{
     if(isSuper){
       const all = (await db.collection("schools").where("status", "==", "approved").get()).docs;
-      rows = all.map(d => ({ sid: d.id, schoolName: d.data().name, centerCode: d.data().centerCode || "", role: "admin", status: "active" }));
+      rows = all.map(d => ({ sid: d.id, schoolName: d.data().name, centerCode: d.data().centerCode || "", role: "admin", status: "active" })).sort((a, b) => String(a.schoolName).localeCompare(String(b.schoolName)));
       pending = (await db.collection("schools").where("status", "==", "pending").get()).docs;
+      // centros que se han quedado sin ningún administrador activo
+      noAdmin = (await Promise.all(all.map(async d => {
+        try{
+          const adm = (await db.collection(`schools/${d.id}/members`).where("role", "==", "admin").get()).docs.filter(m => m.data().status === "active");
+          return adm.length ? null : { sid: d.id, name: d.data().name };
+        }catch(e){ return null; }
+      }))).filter(Boolean);
       if(!synced){ // mantiene al día el directorio público de centros aprobados
         synced = true; const b = db.batch();
         all.forEach(d => b.set(db.doc("directory/" + d.id), { name: d.data().name, centerCode: d.data().centerCode || "" }, { merge: true }));
@@ -480,23 +511,23 @@ async function renderChooser(){
         if(n) alerts.push({ sid: r.sid, name: r.schoolName, n });
       }
     }
-    owned = (await db.collection("schools").where("ownerUid", "==", me.uid).get()).docs.filter(d => !["approved", "deleted"].includes(d.data().status));
+    owned = (await db.collection("schools").where("ownerUid", "==", me.uid).get()).docs.filter(d => !["approved", "deleted"].includes(d.data().status) && !d.data().hiddenByOwner);
   }catch(e){ fail(e); }
   window.rowsCache = rows;
-  const st = { active: ["", "Activo"], pending: ["wait", "Pendiente de aprobación"], rejected: ["off", "Rechazado"] };
   const alertHtml = alerts.map(a => `<div class="banner"><span>Hay ${a.n} solicitud${a.n > 1 ? "es" : ""} nueva${a.n > 1 ? "s" : ""} para unirse a «${esc(a.name)}».</span><button class="small" onclick="enterSchool('${a.sid}','members')">Ver</button></div>`).join("");
-  const rowHtml = rows.map(r => { const t = st[r.status] || st.pending;
-    return `<div class="row"><div class="info"><strong>${esc(r.schoolName)}</strong><small>${r.role === "admin" ? "Administrador" : "Usuario"} · <span class="tag ${t[0]}">${t[1]}</span></small></div>
-    <div class="acts">${r.status === "active" ? `<button class="small" onclick="enterSchool('${r.sid}')">Entrar</button>${!isSuper ? `<button class="small danger" onclick="askLeaveSchool('${r.sid}', '${esc(r.schoolName)}')">Borrar</button>` : ""}` : ""}${isSuper ? `<button class="small" aria-label="Editar centro" onclick="editSchool('${r.sid}')">${PENCIL}</button><button class="small danger" aria-label="Eliminar centro" onclick="askDelete('${r.sid}')">×</button>` : ""}</div></div>`; }).join("");
+  const noAdminHtml = noAdmin.map(a => `<div class="banner err"><span>El centro «${esc(a.name)}» se ha quedado sin administradores.</span><button class="small" onclick="enterSchool('${a.sid}','members')">Ver</button></div>`).join("");
   const ownHtml = owned.map(d => { const s = d.data(), rej = s.status === "rejected";
-    return `<div class="row"><div class="info"><strong>${esc(s.name)}</strong><small>Registro de centro · <span class="tag ${rej ? "off" : "wait"}">${rej ? "Rechazado" : "Pendiente de aprobación"}</span></small></div></div>`; }).join("");
+    return `<div class="row"><div class="info"><strong>${esc(s.name)}</strong><small>Registro de centro · <span class="tag ${rej ? "off" : "wait"}">${rej ? "Rechazado" : "Pendiente de aprobación"}</span></small></div>${rej ? `<div class="acts"><button class="small danger" aria-label="Quitar de la lista" title="Quitar de la lista" onclick="hideRejected('${d.id}')">×</button></div>` : ""}</div>`; }).join("");
   const pendHtml = pending.map(d => { const s = d.data();
     return `<div class="row"><div class="info"><strong>${esc(s.name)}</strong><small>Código: ${esc(s.centerCode || "—")} · ${esc(s.ownerEmail)}</small></div>
     <div class="acts"><button class="small" onclick="approveSchool('${d.id}')">Aprobar</button><button class="small danger" onclick="rejectSchool('${d.id}')">Rechazar</button></div></div>`; }).join("");
-  $app.innerHTML = fl + alertHtml +
-    (isSuper ? `<div class="panel"><h3>Solicitudes de registro de centros</h3>${pendHtml || '<div class="empty">No hay solicitudes pendientes.</div>'}</div>` : "") +
-    `<div class="panel"><h3>${isSuper ? "Todos los centros" : "Mis centros"}</h3>${rowHtml + ownHtml || '<div class="empty">Todavía no tienes acceso a ningún centro.</div>'}</div>
-    <nav class="menu"><button onclick="renderJoin()">Unirme a un nuevo centro</button><button onclick="renderRegister()">Registrar un nuevo centro</button></nav>`;
+  const listPanel = isSuper
+    ? `<div class="panel"><h3>Todos los centros</h3><input class="search" placeholder="Buscar centro por nombre o código" value="${esc(centQ)}" oninput="centQ=this.value;centPage=0;drawChooserList()"><div id="schoolList"></div>${ownHtml}</div>`
+    : `<div class="panel"><h3>Mis centros</h3>${rows.map(chooserRow).join("") + ownHtml || '<div class="empty">Todavía no tienes acceso a ningún centro.</div>'}</div>`;
+  $app.innerHTML = fl + alertHtml + noAdminHtml +
+    (isSuper ? `<div class="panel"><h3>Solicitudes de registro de centros</h3>${pendHtml || '<div class="empty">No hay solicitudes pendientes.</div>'}</div>` : "") + listPanel +
+    `<nav class="menu"><button onclick="renderJoin()">Unirme a un nuevo centro</button><button onclick="renderRegister()">Registrar un nuevo centro</button>${isSuper ? '<button onclick="renderCenterHistory()">Historial de centros</button>' : ""}</nav>`;
+  if(isSuper) drawChooserList();
 }
 
 // ---------- Salir de un centro (administradores y usuarios; nunca superadministrador) ----------
@@ -544,14 +575,21 @@ function renderRegister(){
 
 // ---------- Unirme a un centro ----------
 async function renderJoin(){
-  const fl = flashHtml();
-  $app.innerHTML = fl + `<div class="bar"><button class="ghost" onclick="renderChooser()">← Volver</button><h2>Unirme a un centro</h2></div>` + loading("Cargando centros…");
+  joinQ = "";
+  const fl = flashHtml(), head = `<div class="bar"><button class="ghost" onclick="renderChooser()">← Volver</button><h2>Unirme a un centro</h2></div>`;
+  $app.innerHTML = fl + head + loading("Cargando centros…");
   try{
     dirList = (await db.collection("directory").get()).docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name));
   }catch(e){ fail(e); }
-  $app.innerHTML = fl + `<div class="bar"><button class="ghost" onclick="renderChooser()">← Volver</button><h2>Unirme a un centro</h2></div>
-    <div class="panel">${dirList.map((s, i) => `<div class="row"><div class="info"><strong>${esc(s.name)}</strong><small>${esc(s.centerCode || "")}</small></div>
-    <button class="small" onclick="joinSchool(${i})">Solicitar</button></div>`).join("") || '<div class="empty">Todavía no hay centros aprobados.</div>'}</div>`;
+  $app.innerHTML = fl + head + `<input class="search" placeholder="Buscar centro por nombre o código" oninput="joinQ=this.value;drawJoin()"><div class="panel" id="joinList"></div>`;
+  drawJoin();
+}
+function drawJoin(){
+  const box = document.getElementById("joinList"); if(!box) return;
+  const q = joinQ.toLowerCase().trim();
+  const items = dirList.map((s, i) => ({ s, i })).filter(({ s }) => `${s.name} ${s.centerCode || ""}`.toLowerCase().includes(q));
+  box.innerHTML = items.map(({ s, i }) => `<div class="row"><div class="info"><strong>${esc(s.name)}</strong><small>${esc(s.centerCode || "")}</small></div>
+    <button class="small" onclick="joinSchool(${i})">Solicitar</button></div>`).join("") || `<div class="empty">${dirList.length ? "Ningún centro coincide con la búsqueda." : "Todavía no hay centros aprobados."}</div>`;
 }
 async function joinSchool(i){
   const s = dirList[i];
@@ -566,14 +604,14 @@ async function joinSchool(i){
 async function approveSchool(id){
   try{
     const ref = db.doc("schools/" + id), s = (await ref.get()).data(), b = db.batch();
-    b.update(ref, { status: "approved" });
+    b.update(ref, { status: "approved", reviewedAt: FV.serverTimestamp(), reviewedByEmail: me.email });
     b.set(db.doc("directory/" + id), { name: s.name, centerCode: s.centerCode || "" });
     b.set(memberRef(id, s.ownerUid), { uid: s.ownerUid, email: s.ownerEmail, displayName: s.ownerName || "", role: "admin", status: "active", schoolName: s.name, createdAt: FV.serverTimestamp() });
     await b.commit(); toast("Centro aprobado"); renderChooser();
   }catch(e){ fail(e); }
 }
 async function rejectSchool(id){
-  try{ await db.doc("schools/" + id).update({ status: "rejected" }); toast("Centro rechazado"); renderChooser(); }catch(e){ fail(e); }
+  try{ await db.doc("schools/" + id).update({ status: "rejected", reviewedAt: FV.serverTimestamp(), reviewedByEmail: me.email }); toast("Centro rechazado"); renderChooser(); }catch(e){ fail(e); }
 }
 
 // ---------- Dashboard del centro ----------
@@ -635,7 +673,7 @@ async function renderMembers(){
   const adm = by(r => r.status === "active" && r.role === "admin").map(d => row(d, d.id === me.uid ? "" : btn("Pasar a usuario", `setMember('${d.id}',{role:'user'})`)));
   const usr = by(r => r.status === "active" && r.role !== "admin").map(d => row(d, btn("Hacer administrador", `setMember('${d.id}',{role:'admin'})`) + btn("Eliminar", `removeMember('${d.id}')`, "danger")));
   $app.innerHTML = fl + `<div class="bar"><button class="ghost" onclick="renderDashboard()">← Volver</button><h2>Miembros</h2></div>` +
-    (pend.length || cur.admin ? sec("Solicitudes pendientes", pend, "No hay solicitudes pendientes.") : "") +
+    sec("Solicitudes pendientes", pend, "No hay solicitudes pendientes.") +
     sec("Administradores", adm, "Sin administradores.") + sec("Usuarios", usr, "Sin usuarios.");
 }
 async function setMember(uid, data){
@@ -832,8 +870,8 @@ async function importBooksCsv(input){
   }catch(e){input.value="";fail(e);}
 }
 function exportMenu(type){
-  const title = type === "books" ? "Exportar biblioteca" : type === "history" ? "Exportar historial" : "Exportar libros perdidos";
-  const {o,close} = modal(`<h3>${title}</h3><p>Elige el formato de exportación.</p><div class="tools"><button type="button" onclick="${type === "books" ? "exportBooks('csv')" : type === "history" ? "exportHistory('csv')" : "exportLostBooks('csv')"};window._exportMenuClose && window._exportMenuClose()">CSV</button><button type="button" onclick="${type === "books" ? "exportBooks('xlsx')" : type === "history" ? "exportHistory('xlsx')" : "exportLostBooks('xlsx')"};window._exportMenuClose && window._exportMenuClose()">Excel</button></div>`);
+  const T = { books: ["Exportar biblioteca", "exportBooks"], history: ["Exportar historial", "exportHistory"], lost: ["Exportar libros perdidos", "exportLostBooks"], centers: ["Exportar historial de centros", "exportCenters"] }[type];
+  const {o,close} = modal(`<h3>${T[0]}</h3><p>Elige el formato de exportación.</p><div class="tools"><button type="button" onclick="${T[1]}('csv');window._exportMenuClose && window._exportMenuClose()">CSV</button><button type="button" onclick="${T[1]}('xlsx');window._exportMenuClose && window._exportMenuClose()">Excel</button></div>`);
   window._exportMenuClose = close;
 }
 function saveExport(rows, filename, sheetName, format){
@@ -872,8 +910,8 @@ function bookSelect(name, values, selected=""){
   if(val && !all.includes(val)) all.push(val); // conserva valores antiguos o importados
   return `<select name="${name}"><option value="" ${!val ? "selected" : ""}>${trs("Seleccionar…")}</option>${all.map(v => `<option value="${esc(v)}" ${v===val?"selected":""}>${trs(v)}</option>`).join("")}</select>`;
 }
-function genreField(selected=""){ return `<label>Género${bookSelect("genre", BOOK_GENRES, selected)}</label>`; }
-function ageField(selected=""){ return `<label>Edad recomendada${bookSelect("age", BOOK_AGES, selected)}</label>`; }
+function genreField(selected=""){ return `<label>Género (opcional)${bookSelect("genre", BOOK_GENRES, selected)}</label>`; }
+function ageField(selected=""){ return `<label>Edad recomendada (opcional)${bookSelect("age", BOOK_AGES, selected)}</label>`; }
 function inferBookGenre(categories=[]){
   const c = categories.join(" ").toLowerCase();
   const rules = [[/comic|graphic novel|manga/,"Cómic"],[/poetry|poesía/,"Poesía"],[/drama|theater|teatro/,"Teatro"],[/fantasy|fantasía/,"Fantasía"],[/science fiction|sci-fi|ciencia ficción/,"Ciencia ficción"],[/mystery|detective|thriller|misterio/,"Misterio"],[/horror|terror/,"Terror"],[/romance|romántica/,"Romántica"],[/history|historical|historia/,"Histórica"],[/biograph|autobiograph|biografía/,"Biografía"],[/essay|ensayo/,"Ensayo"],[/adventure|aventura/,"Aventura"],[/picture book|illustrated|álbum ilustrado/,"Álbum ilustrado"],[/juvenile fiction|fiction|ficción|literature|literatura/,"Narrativa"],[/science|education|reference|informational|nonfiction|divulgación/,"Divulgación"]];
@@ -901,7 +939,7 @@ function renderManual(isbn = ""){
   $app.innerHTML = addBar("Añadir manualmente") + `<div class="panel">
     ${catalogSearchMarkup("manualBookForm")}
     <form id="manualBookForm" onsubmit="addBook(event)">
-      <label>ISBN o código propio (opcional)<input name="isbn" value="${esc(isbn)}" placeholder="Puedes dejarlo vacío"></label>
+      <label>ISBN o código propio (opcional)<input name="isbn" value="${esc(isbn)}"></label>
       <label>Título del libro<input name="title" required></label>
       <label>Autor (opcional)<input name="author"></label>
       <label>Editorial (opcional)<input name="publisher"></label>
@@ -1199,7 +1237,7 @@ let loanMode = "lend", loanBook = null;
 function renderLoans(){
   stopScanner();
   const fl = flashHtml();
-  $app.innerHTML = fl + backBar("Préstamos/Devoluciones") + `<nav class="menu"><button onclick="startLoan('lend')">Prestar</button><button onclick="startLoan('return')">Devolver</button></nav>`;
+  $app.innerHTML = fl + backBar("Préstamos/Devoluciones") + `<nav class="menu loanmenu"><button onclick="startLoan('lend')">Prestar</button><button onclick="startLoan('return')">Devolver</button></nav>`;
 }
 function scanScreen(title, text, kind, cb, back, label, step){
   stopScanner(); scanDone = false; window._cb = cb;
@@ -1318,8 +1356,8 @@ async function onLoanStudent(text){
 function loanResult(ok, text){
   stopScanner();
   const lend = loanMode === "lend";
-  $app.innerHTML = `<div class="bar"><h2>${loanHead()}</h2></div>${stepper(ok ? 5 : 3)}<div class="banner ${ok ? "" : "err"}"><span>${ok ? "✅ " : ""}${esc(text)}</span></div>
-    <nav class="menu"><button onclick="${ok ? "loanIsbnScreen()" : "loanStudentScreen()"}">${ok ? (lend ? "Prestar otro libro" : "Devolver otro libro") : "Escanear otro alumno"}</button><button class="ghost" onclick="renderLoans()">Volver</button></nav>`;
+  $app.innerHTML = `<div class="bar"><button class="ghost" onclick="renderLoans()">← Volver</button><h2>${loanHead()}</h2></div>${stepper(ok ? 5 : 3)}<div class="banner ${ok ? "" : "err"}"><span>${ok ? "✅ " : ""}${esc(text)}</span></div>
+    <nav class="menu"><button onclick="${ok ? "loanIsbnScreen()" : "loanStudentScreen()"}">${ok ? (lend ? "Prestar otro libro" : "Devolver otro libro") : "Escanear otro alumno"}</button></nav>`;
 }
 async function doLend(code){
   const b = loanBook;
@@ -1424,7 +1462,7 @@ async function renderHistory(){
   const fl = flashHtml();
   $app.innerHTML = fl + loading("Cargando historial…");
   try{ histCache = (await db.collection(`schools/${cur.sid}/loans`).orderBy("loanDate", "desc").get()).docs.map(d => ({ id: d.id, ...d.data() })); }catch(e){ fail(e); }
-  $app.innerHTML = fl + backBar("Historial") + `<div class="count-summary">Préstamos registrados: <strong>${histCache.length}</strong> · Activos: <strong>${histCache.filter(l=>l.status==="active").length}</strong></div><div class="tools"><button onclick="renderOut()">Libros fuera de centro</button>${cur.admin ? `<button onclick="renderLostBooks()">Libros perdidos</button>` : ""}<button onclick="exportMenu('history')">Exportar</button></div>` +
+  $app.innerHTML = fl + backBar("Historial") + `<div class="count-summary">Préstamos registrados: <strong>${histCache.length}</strong> · Activos: <strong>${histCache.filter(l=>l.status==="active").length}</strong> · Perdidos: <strong>${histCache.filter(l=>l.status==="lost").length}</strong></div><div class="tools"><button onclick="renderOut()">Libros fuera de centro</button><button onclick="renderLostBooks()">Libros perdidos</button><button onclick="exportMenu('history')">Exportar</button></div>` +
     `<input class="search" placeholder="Buscar por libro, alumno, ISBN o código propio" value="${esc(histQ)}" oninput="histQ=this.value;histPage=0;drawHistory()"><div id="tbl"></div>`;
   drawHistory();
 }
@@ -1455,15 +1493,15 @@ function drawOut(){
   const q = outQ.toLowerCase(), list = sorted(outList.filter(l => `${l.title} ${l.studentCode} ${l.isbn}`.toLowerCase().includes(q)), "out", gLoan);
   const pages = Math.max(1, Math.ceil(list.length / PAGE30)); outPage = Math.min(outPage, pages - 1);
   const rows = list.slice(outPage * PAGE30, (outPage + 1) * PAGE30), pg = PAGER("setOutPage", outPage, pages);
-  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr>${sth("out", "studentCode", "Alumno")}<th></th>${sth("out", "title", "Libro")}${sth("out", "loanDate", "Préstamo")}${cur.admin ? "<th></th>" : ""}</tr></thead><tbody>` +
+  document.getElementById("tbl").innerHTML = pg + `<div class="tablewrap"><table><thead><tr>${sth("out", "studentCode", "Alumno")}<th></th>${sth("out", "title", "Libro")}${sth("out", "loanDate", "Préstamo")}<th></th></tr></thead><tbody>` +
     rows.map(l => `<tr><td><strong>${esc(l.studentCode)}</strong></td><td class="book-thumb-cell">${bookThumb(l.isbn, l.cover, l.title)}</td><td><div class="ell">${esc(l.title || l.isbn)}</div></td><td class="hm">${dt(l.loanDate)}</td>
-      ${cur.admin ? `<td><button class="small danger" title="Marcar como libro perdido y cerrar el préstamo" aria-label="Libro perdido" onclick="closeLoan('${esc(l.id)}')">Libro perdido</button></td>` : ""}</tr>`).join("") +
+      <td><button class="small danger" title="Marcar como libro perdido y cerrar el préstamo" aria-label="Libro perdido" onclick="closeLoan('${esc(l.id)}')">Libro perdido</button></td></tr>`).join("") +
     `</tbody></table>${rows.length ? "" : '<div class="empty" style="padding:16px">No hay libros fuera del centro.</div>'}</div>` + pg;
 }
 function setOutPage(p){ outPage = p; drawOut(); document.getElementById("tbl").scrollIntoView({ block: "start" }); }
 async function closeLoan(id){
   const l = outList.find(x=>x.id===id);
-  if(!cur.admin || !l) return;
+  if(!l) return;
   const {o,close}=modal(`<h3>Registrar libro perdido</h3><p><strong>${esc(l.title||l.isbn)}</strong><br>Alumno: ${esc(l.studentCode)}</p><form id="lostIncidentForm"><label>¿Qué ha sucedido con este libro?<textarea name="note" required placeholder="Describe brevemente la incidencia…"></textarea></label><div class="tools"><button class="danger">Registrar como perdido</button><button type="button" class="ghost" onclick="window._lostClose && window._lostClose()">Cancelar</button></div></form>`);
   window._lostClose=close;
   o.querySelector("form").onsubmit=async e=>{
@@ -1488,7 +1526,6 @@ async function closeLoan(id){
 }
 let lostCache=[],lostQ="",lostPage=0;
 async function renderLostBooks(){
-  if(!cur.admin)return;
   const fl=flashHtml();$app.innerHTML=fl+loading("Cargando libros perdidos…");
   try{lostCache=(await db.collection(`schools/${cur.sid}/lostBooks`).get()).docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.lostAt?.seconds||0)-(a.lostAt?.seconds||0));}catch(e){fail(e);}
   $app.innerHTML=fl+`<div class="bar"><button class="ghost" onclick="renderHistory()">← Volver</button><h2>Libros perdidos</h2></div><div class="count-summary">Incidencias registradas: <strong>${lostCache.length}</strong></div><div class="tools"><button onclick="exportMenu('lost')">Exportar</button></div><input class="search" placeholder="Buscar por libro, alumno o estado" value="${esc(lostQ)}" oninput="lostQ=this.value;lostPage=0;drawLostBooks()"><div id="tbl"></div>`;
@@ -1499,30 +1536,38 @@ function drawLostBooks(){
   const q=lostQ.toLowerCase(),list=lostCache.filter(x=>`${x.title} ${x.isbn} ${x.studentCode} ${x.note} ${x.status}`.toLowerCase().includes(q));
   const pages=Math.max(1,Math.ceil(list.length/PAGE30));lostPage=Math.min(lostPage,pages-1);
   const rows=list.slice(lostPage*PAGE30,(lostPage+1)*PAGE30),pg=PAGER("setLostPage",lostPage,pages);
-  box.innerHTML=pg+`<div class="tablewrap"><table><thead><tr><th></th><th>Libro</th><th>Alumno</th><th>Fecha de pérdida</th><th>Qué sucedió</th><th>Estado</th>${cur.admin?"<th></th>":""}</tr></thead><tbody>`+
-    rows.map(x=>`<tr><td class="book-thumb-cell">${bookThumb(x.isbn,x.cover,x.title)}</td><td><strong>${esc(x.title||x.isbn)}</strong><small>${esc(x.isbn||"")}</small></td><td>${esc(x.studentCode)}</td><td>${dt(x.lostAt)}</td><td class="lost-note-cell">${esc(x.note||"")}</td><td><span class="tag ${x.status==="resolved"?"":"off"}">${x.status==="resolved"?`Resuelto · ${dt(x.resolvedAt)}`:"Perdido"}</span></td>${cur.admin?`<td>${x.status==="lost"?`<button class="small" onclick="markBookRecovered('${esc(x.id)}')">Libro recuperado</button>`:""}</td>`:""}</tr>`).join("")+`</tbody></table>${rows.length?"":`<div class="empty" style="padding:16px">${lostCache.length?"No hay incidencias que coincidan con la búsqueda.":"Todavía no hay libros perdidos registrados."}</div>`}</div>`+pg;
+  box.innerHTML=pg+`<div class="tablewrap"><table><thead><tr><th></th><th>Libro</th><th>Alumno</th><th>Fecha de pérdida</th><th>Qué sucedió</th><th>Estado</th><th>Cómo se resolvió</th><th></th></tr></thead><tbody>`+
+    rows.map(x=>`<tr><td class="book-thumb-cell">${bookThumb(x.isbn,x.cover,x.title)}</td><td><strong>${esc(x.title||x.isbn)}</strong><small>${esc(x.isbn||"")}</small></td><td>${esc(x.studentCode)}</td><td>${dt(x.lostAt)}</td><td class="lost-note-cell">${esc(x.note||"")}</td><td><span class="tag ${x.status==="resolved"?"":"off"}">${x.status==="resolved"?`Resuelto · ${dt(x.resolvedAt)}`:"Perdido"}</span></td><td class="lost-note-cell">${esc(x.resolutionNote||"")}</td><td>${x.status==="lost"?`<button class="small" onclick="markBookRecovered('${esc(x.id)}')">Libro recuperado</button>`:""}</td></tr>`).join("")+`</tbody></table>${rows.length?"":`<div class="empty" style="padding:16px">${lostCache.length?"No hay incidencias que coincidan con la búsqueda.":"Todavía no hay libros perdidos registrados."}</div>`}</div>`+pg;
 }
 function setLostPage(p){lostPage=p;drawLostBooks();document.getElementById("tbl").scrollIntoView({block:"start"});}
 function exportLostBooks(format="xlsx"){
-  const rows=lostCache.map(x=>({ISBN:x.isbn||"","Libro":x.title||"",Alumno:x.studentCode||"","Fecha de pérdida":dtt(x.lostAt),"Qué sucedió":x.note||"",Estado:x.status==="resolved"?"Resuelto":"Perdido","Fecha de resolución":dtt(x.resolvedAt)}));
+  const rows=lostCache.map(x=>({ISBN:x.isbn||"","Libro":x.title||"",Alumno:x.studentCode||"","Fecha de pérdida":dtt(x.lostAt),"Qué sucedió":x.note||"",Estado:x.status==="resolved"?"Resuelto":"Perdido","Fecha de resolución":dtt(x.resolvedAt),"Cómo se resolvió":x.resolutionNote||""}));
   saveExport(rows,`libros-perdidos-${cur.name}`,"Libros perdidos",format);
 }
 async function markBookRecovered(id){
-  if(!cur.admin)return;
-  const lost=lostCache.find(x=>x.id===id);if(!lost||lost.status!=="lost")return;
-  if(!confirm(`¿Confirmas que se ha recuperado «${lost.title||lost.isbn}»? El ejemplar volverá a estar disponible en la biblioteca.`))return;
-  const lostRef=db.doc(`schools/${cur.sid}/lostBooks/${id}`),bookRef=db.doc(`schools/${cur.sid}/books/${lost.bookId||lost.isbn}`),loanRef=db.doc(`schools/${cur.sid}/loans/${lost.loanId||id}`);
-  try{
-    await db.runTransaction(async tx=>{
-      const [ls,bs,loanSnap]=await Promise.all([tx.get(lostRef),tx.get(bookRef),tx.get(loanRef)]);
-      if(!ls.exists||ls.data().status!=="lost")throw new Error("La incidencia ya está resuelta o no existe");
-      if(bs.exists){const b=bs.data(),total=(Number(b.totalCopies)||0)+1,available=(Number(b.availableCopies)||0)+1;tx.update(bookRef,{totalCopies:total,availableCopies:available,available:true});}
-      else{tx.set(bookRef,{isbn:lost.isbn||lost.bookId,title:lost.title||lost.isbn,author:lost.author||"",publisher:lost.publisher||"",cover:lost.cover||"",genre:"",age:"",totalCopies:1,availableCopies:1,activeLoans:0,nextCopyNumber:(Number(lost.copyNumber)||1)+1,available:true,createdAt:FV.serverTimestamp(),recovered:true});}
-      tx.update(lostRef,{status:"resolved",resolvedAt:FV.serverTimestamp(),resolvedBy:me.uid});
-      if(loanSnap.exists) tx.update(loanRef,{lostResolvedAt:FV.serverTimestamp(),lostResolvedBy:me.uid});
-    });
-    note("Libro recuperado. La incidencia se ha resuelto y el ejemplar vuelve a la biblioteca.");renderLostBooks();
-  }catch(e){fail(e);}
+  const lost = lostCache.find(x => x.id === id);
+  if(!lost || lost.status !== "lost") return;
+  const { o, close } = modal(`<h3>Resolver libro perdido</h3><p><strong>${esc(lost.title || lost.isbn)}</strong><br>Alumno: ${esc(lost.studentCode)}</p>
+    <form id="lostResolveForm"><label>¿Qué ha sucedido? ¿Cómo se ha recuperado el libro?<textarea name="note" required placeholder="Describe brevemente lo sucedido…"></textarea></label>
+    <div class="tools"><button>Resolver y devolver a la biblioteca</button><button type="button" class="ghost" id="lostResolveCancel">Cancelar</button></div></form>`);
+  o.querySelector("#lostResolveCancel").onclick = close;
+  o.querySelector("form").onsubmit = async e => {
+    e.preventDefault();
+    const noteText = e.target.note.value.trim();
+    if(!noteText) return toast("Describe qué ha sucedido con el libro", true);
+    const lostRef = db.doc(`schools/${cur.sid}/lostBooks/${id}`), bookRef = db.doc(`schools/${cur.sid}/books/${lost.bookId || lost.isbn}`), loanRef = db.doc(`schools/${cur.sid}/loans/${lost.loanId || id}`);
+    try{
+      await db.runTransaction(async tx => {
+        const [ls, bs, loanSnap] = await Promise.all([tx.get(lostRef), tx.get(bookRef), tx.get(loanRef)]);
+        if(!ls.exists || ls.data().status !== "lost") throw new Error("La incidencia ya está resuelta o no existe");
+        if(bs.exists){ const b = bs.data(), total = (Number(b.totalCopies) || 0) + 1, available = (Number(b.availableCopies) || 0) + 1; tx.update(bookRef, { totalCopies: total, availableCopies: available, available: true }); }
+        else{ tx.set(bookRef, { isbn: lost.isbn || lost.bookId, title: lost.title || lost.isbn, author: lost.author || "", publisher: lost.publisher || "", cover: lost.cover || "", genre: "", age: "", totalCopies: 1, availableCopies: 1, activeLoans: 0, nextCopyNumber: (Number(lost.copyNumber) || 1) + 1, available: true, createdAt: FV.serverTimestamp(), recovered: true }); }
+        tx.update(lostRef, { status: "resolved", resolvedAt: FV.serverTimestamp(), resolvedBy: me.uid, resolutionNote: noteText });
+        if(loanSnap.exists) tx.update(loanRef, { lostResolvedAt: FV.serverTimestamp(), lostResolvedBy: me.uid, lostResolvedNote: noteText });
+      });
+      close(); note("Libro recuperado. La incidencia se ha resuelto y el ejemplar vuelve a la biblioteca."); renderLostBooks();
+    }catch(err){ fail(err); }
+  };
 }
 // ---------- Mensajes de error de inicio de sesión ----------
 const AUTH_MSG = {
@@ -1563,7 +1608,70 @@ const gLoan = (l, k) => k === "title" ? (l.title || l.isbn || "") : k === "loanD
 const gDel = (s, k) => k === "deletedAt" ? secs(s.deletedAt) : s.id;
 // ---------- Idioma: castellano / euskara ----------
 let lang = localStorage.getItem("lang") === "eus" ? "eus" : "es";
+// ---------- Historial de centros (solo superadministrador) ----------
+let centHist = [], chQ = "", chPage = 0;
+sortState.cent = { k: "createdAt", d: -1 };
+sortRedraw.cent = () => { chPage = 0; drawCenterHistory(); };
+const centTag = c => ({ pending: ["wait", "Pendiente"], approved: ["", "Aprobado"], rejected: ["off", "Rechazado"], deleted: ["off", "Eliminado"] }[c.status] || ["", c.status]);
+const gCent = (c, k) => k === "name" ? (c.name || "") : k === "owner" ? (c.ownerEmail || "") : k === "createdAt" ? secs(c.createdAt) : k === "reviewedAt" ? secs(c.reviewedAt) : k === "status" ? centTag(c)[1] : "";
+const subTxt = t => t ? `<small style="display:block;color:var(--muted)">${esc(t)}</small>` : "";
+async function renderCenterHistory(){
+  if(!isSuper) return;
+  const fl = flashHtml();
+  $app.innerHTML = fl + loading("Cargando historial de centros…");
+  try{ centHist = (await db.collection("schools").get()).docs.map(d => ({ id: d.id, ...d.data() })); }catch(e){ fail(e); }
+  const n = st => centHist.filter(c => c.status === st).length;
+  $app.innerHTML = fl + `<div class="bar"><button class="ghost" onclick="renderChooser()">← Volver</button><h2>Historial de centros</h2></div>
+    <div class="count-summary">Solicitudes: <strong>${centHist.length}</strong> · Pendientes: <strong>${n("pending")}</strong> · Aprobadas: <strong>${n("approved")}</strong> · Rechazadas: <strong>${n("rejected")}</strong></div>
+    <div class="tools"><button onclick="exportMenu('centers')">Exportar</button></div>
+    <input class="search" placeholder="Buscar por centro, código o solicitante" value="${esc(chQ)}" oninput="chQ=this.value;chPage=0;drawCenterHistory()"><div id="tbl"></div>`;
+  drawCenterHistory();
+}
+function drawCenterHistory(){
+  const box = document.getElementById("tbl"); if(!box) return;
+  const q = chQ.toLowerCase().trim(), list = sorted(centHist.filter(c => `${c.name} ${c.centerCode} ${c.ownerName} ${c.ownerEmail} ${centTag(c)[1]}`.toLowerCase().includes(q)), "cent", gCent);
+  const pages = Math.max(1, Math.ceil(list.length / PAGE30)); chPage = Math.min(chPage, pages - 1);
+  const rows = list.slice(chPage * PAGE30, (chPage + 1) * PAGE30), pg = PAGER("setCentHistPage", chPage, pages);
+  box.innerHTML = pg + `<div class="tablewrap"><table><thead><tr>${sth("cent", "name", "Centro")}${sth("cent", "owner", "Solicitante")}${sth("cent", "createdAt", "Enviada")}${sth("cent", "reviewedAt", "Resuelta")}${sth("cent", "status", "Estado")}<th></th></tr></thead><tbody>` +
+    rows.map(c => { const t = centTag(c); return `<tr><td><strong>${esc(c.name)}</strong>${subTxt(c.centerCode)}</td><td>${esc(c.ownerName || "")}${subTxt(c.ownerEmail)}</td><td>${dtt(c.createdAt) || "—"}</td><td>${dtt(c.reviewedAt) || "—"}${subTxt(c.reviewedByEmail)}</td><td><span class="tag ${t[0]}">${t[1]}</span>${c.status === "deleted" ? subTxt(dt(c.deletedAt)) : ""}</td><td>${c.status === "approved" ? `<button class="small" onclick="enterSchool('${esc(c.id)}','members')">Ver miembros</button>` : ""}</td></tr>`; }).join("") +
+    `</tbody></table>${rows.length ? "" : `<div class="empty" style="padding:16px">${centHist.length ? "Ningún centro coincide con la búsqueda." : "Todavía no hay solicitudes de centros."}</div>`}</div>` + pg;
+}
+function setCentHistPage(p){ chPage = p; drawCenterHistory(); document.getElementById("tbl").scrollIntoView({ block: "start" }); }
+function exportCenters(format = "xlsx"){
+  const rows = sorted(centHist, "cent", gCent).map(c => ({ "Centro": c.name || "", "Código de centro": c.centerCode || "", "Solicitante": c.ownerName || "", "Correo del solicitante": c.ownerEmail || "",
+    "Fecha de solicitud": dtt(c.createdAt), "Fecha de resolución": dtt(c.reviewedAt), "Resuelto por": c.reviewedByEmail || "", "Estado": centTag(c)[1], "Fecha de eliminación": dtt(c.deletedAt) }));
+  saveExport(rows, "historial-de-centros", "Historial de centros", format);
+}
+
 const EU = {
+"Firebase ha rechazado la creación del libro. Para que los usuarios puedan prestar un libro nuevo, las reglas de Firestore deben permitir a los miembros activos crear el documento del libro y registrar el préstamo.":"Firebasek liburuaren sorrera baztertu du. Erabiltzaileek liburu berri bat maileguan eman ahal izateko, Firestoreko arauek kide aktiboei liburuaren dokumentua sortzea eta mailegua erregistratzea baimendu behar diete.",
+"Borrar":"Ezabatu","Cancelar":"Utzi","· Activos:":"· Aktiboak:","· Perdidos:":"· Galduak:",
+"títulos · Ejemplares físicos:":"izenburu · Ale fisikoak:","Título, autor o ISBN":"Izenburua, egilea edo ISBNa",
+"Buscando en Google Books y Open Library…":"Google Books eta Open Library-n bilatzen…","Ejemplares a añadir (opcional)":"Gehitzeko aleak (aukerakoa)",
+"Este libro no está en la biblioteca. Añade sus datos para continuar con el préstamo.":"Liburu hau ez dago liburutegian. Gehitu bere datuak mailegua jarraitzeko.",
+"ISBN o código propio":"ISBN edo kode propioa","ISBN o código del centro":"ISBN edo ikastetxearen kodea",
+"Buscar por libro, alumno, ISBN o código propio":"Bilatu liburua, ikaslea, ISBN edo kode propioa bidez","Describe brevemente la incidencia…":"Deskribatu laburki gertakaria…",
+"Describe brevemente lo sucedido…":"Deskribatu laburki gertatutakoa…","Buscar por libro, alumno o estado":"Bilatu liburua, ikaslea edo egoera bidez",
+"Esta sección se activa en la siguiente fase":"Atal hau hurrengo fasean aktibatuko da","El archivo CSV no contiene filas de datos.":"CSV fitxategiak ez dauka datu-errenkadarik.",
+"Ya existe un libro con ese ISBN o código":"Badago liburu bat ISBN edo kode horrekin",
+"¿No lo detecta? Escribe el ISBN o código del libro":"Ez du detektatzen? Idatzi liburuaren ISBNa edo kodea","¿No lo detecta? Escribe el código del libro":"Ez du detektatzen? Idatzi liburuaren kodea",
+"No se cargó el lector de QR":"Ez da QR irakurgailua kargatu","No se cargó el lector de códigos de barras":"Ez da barra-kode irakurgailua kargatu",
+"Escribe un título, autor o ISBN para buscar":"Idatzi izenburu, egile edo ISBN bat bilatzeko","Autor no indicado":"Egilea adierazi gabe","Código de libro no válido":"Liburuaren kode baliogabea",
+"Escanea el código de barras del libro o escribe su ISBN/código propio.":"Eskaneatu liburuaren barra-kodea edo idatzi bere ISBN/kode propioa.",
+"No hay ningún libro seleccionado":"Ez dago libururik hautatuta","El libro ya no está en la biblioteca":"Liburua jada ez dago liburutegian",
+"Describe qué ha sucedido con el libro":"Deskribatu zer gertatu den liburuarekin","Este préstamo ya no está activo":"Mailegu hau jada ez dago aktibo",
+"Este préstamo ya tiene una incidencia registrada":"Mailegu honek jada gertakari bat erregistratuta dauka","Incidencia de libro perdido registrada.":"Liburu galduaren gertakaria erregistratu da.",
+"Cargando libros perdidos…":"Liburu galduak kargatzen…","No hay incidencias que coincidan con la búsqueda.":"Ez dago bilaketarekin bat datorren gertakaririk.",
+"Todavía no hay libros perdidos registrados.":"Oraindik ez dago liburu galdurik erregistratuta.","Fecha de resolución":"Ebazpen-data",
+"La incidencia ya está resuelta o no existe":"Gertakaria jada ebatzita dago edo ez dago","Género (opcional)":"Generoa (aukerakoa)","Edad recomendada (opcional)":"Gomendatutako adina (aukerakoa)",
+"Historial de centros":"Ikastetxeen historiala","Cargando historial de centros…":"Ikastetxeen historiala kargatzen…","Exportar historial de centros":"Esportatu ikastetxeen historiala",
+"Buscar por centro, código o solicitante":"Bilatu ikastetxea, kodea edo eskatzailea bidez","Centro":"Ikastetxea","Solicitante":"Eskatzailea","Enviada":"Bidalita","Resuelta":"Ebatzita",
+"Pendiente":"Zain","Aprobado":"Onartuta","Eliminado":"Ezabatuta","Ver miembros":"Ikusi kideak","Quitar de la lista":"Kendu zerrendatik",
+"Buscar centro por nombre o código":"Bilatu ikastetxea izenaren edo kodearen arabera","Ningún centro coincide con la búsqueda.":"Ez dago bilaketarekin bat datorren ikastetxerik.",
+"Todavía no hay solicitudes de centros.":"Oraindik ez dago ikastetxe-eskaerarik.","Solicitudes:":"Eskaerak:","· Pendientes:":"· Zain daudenak:","· Aprobadas:":"· Onartutakoak:","· Rechazadas:":"· Baztertutakoak:",
+"Correo del solicitante":"Eskatzailearen posta","Fecha de solicitud":"Eskaera-data","Resuelto por":"Ebatzi duena","Fecha de eliminación":"Ezabatze-data",
+"Cómo se resolvió":"Nola ebatzi zen","Resolver libro perdido":"Liburu galdua ebatzi","¿Qué ha sucedido? ¿Cómo se ha recuperado el libro?":"Zer gertatu da? Nola berreskuratu da liburua?",
+"Resolver y devolver a la biblioteca":"Ebatzi eta liburutegira itzuli",
 "Cargando…":"Kargatzen…","Iniciar sesión":"Hasi saioa","Entrar con Google":"Sartu Google-rekin","o con correo y contraseña":"edo posta elektronikoarekin eta pasahitzarekin",
 "Correo y contraseña":"Posta elektronikoa eta pasahitza","Correo":"Posta elektronikoa","Contraseña":"Pasahitza","Contraseña (mínimo 6 caracteres)":"Pasahitza (gutxienez 6 karaktere)",
 "Repite la contraseña":"Errepikatu pasahitza","Entrar":"Sartu","Salir":"Irten","Crear cuenta":"Sortu kontua","Recuperar contraseña":"Pasahitza berreskuratu",
@@ -1650,6 +1758,12 @@ const EU = {
 "Buscar por título, autor, género, ISBN o código propio":"Bilatu izenburuaren, egilearen, generoaren, ISBNaren edo kode propioaren arabera"
 };
 const EU_RE = [
+  [/^El centro «(.*)» se ha quedado sin administradores\.$/, c => `«${c}» ikastetxeak ez dauka administratzailerik.`],
+  [/^Portada de (.*)$/, t => `${t} liburuaren azala`],
+  [/^Importación terminada: (\d+) títulos incorporados; (\d+) filas omitidas \(sin título o ya existentes\)\.$/, (a, b) => `Inportazioa amaituta: ${a} izenburu gehitu dira; ${b} errenkada saltatu dira (izenbururik gabe edo lehendik daudenak).`],
+  [/^Datos seleccionados de (.*)\. Puedes revisarlos antes de guardar\.$/, x => `Datuak hemendik hautatu dira: ${x}. Gorde aurretik berrikus ditzakezu.`],
+  [/^No se encontraron datos automáticos para (.*)\. Puedes buscarlos o rellenarlos manualmente\.$/, x => `Ez da daturik automatikoki aurkitu hauentzat: ${x}. Eskuz bilatu edo bete ditzakezu.`],
+  [/^Alumno: (.*)$/, a => `Ikaslea: ${a}`],
   [/^Hay (\d+) solicitud(?:es)? nuevas? para unirse a «(.*)»\.$/, (n, c) => n === "1" ? `«${c}» ikastetxean sartzeko eskaera berri bat dago.` : `«${c}» ikastetxean sartzeko ${n} eskaera berri daude.`],
   [/^Hay (\d+) nuevas? solicitud(?:es)? para unirse a tu centro\.$/, n => n === "1" ? "Zure ikastetxean sartzeko eskaera berri bat dago." : `Zure ikastetxean sartzeko ${n} eskaera berri daude.`],
   [/^Código: (.*) · (.*)$/, (c, e) => `Kodea: ${c} · ${e}`],
